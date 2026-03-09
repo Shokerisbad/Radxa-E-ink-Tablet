@@ -1,0 +1,14 @@
+..\obj\ft6336.o: ..\HARDWARE\FT6336\FT6336.c
+..\obj\ft6336.o: ..\HARDWARE\FT6336\FT6336.h
+..\obj\ft6336.o: ..\USER\stm32f10x.h
+..\obj\ft6336.o: ..\CORE\core_cm3.h
+..\obj\ft6336.o: D:\Keil_v4\ARM\ARMCC\bin\..\include\stdint.h
+..\obj\ft6336.o: ..\USER\system_stm32f10x.h
+..\obj\ft6336.o: ..\USER\stm32f10x_conf.h
+..\obj\ft6336.o: ..\STM32F10x_FWLib\inc\stm32f10x_dbgmcu.h
+..\obj\ft6336.o: ..\USER\stm32f10x.h
+..\obj\ft6336.o: ..\STM32F10x_FWLib\inc\stm32f10x_exti.h
+..\obj\ft6336.o: ..\STM32F10x_FWLib\inc\stm32f10x_gpio.h
+..\obj\ft6336.o: ..\STM32F10x_FWLib\inc\stm32f10x_rcc.h
+..\obj\ft6336.o: ..\STM32F10x_FWLib\inc\stm32f10x_usart.h
+..\obj\ft6336.o: ..\STM32F10x_FWLib\inc\misc.h

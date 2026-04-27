@@ -1,4 +1,4 @@
-﻿#include "epubHandler.h"
+#include "epubHandler.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -207,7 +207,7 @@ void EpubHandler::paginateText(const std::string &text) {
   std::string line;
 
   while (std::getline(stream, line, '\n')) {
-    int img_idx = line.find("[IMG:");
+    size_t img_idx = line.find("[IMG:");
     if (img_idx != std::string::npos) {
       // If there's an image, force a page break before it if we have text
       if (!current_page.empty()) {
@@ -221,8 +221,8 @@ void EpubHandler::paginateText(const std::string &text) {
     }
 
     // Estimate wrapped lines
-    int line_len = line.length();
-    int wrapped_lines = (line_len / CHARS_PER_LINE) + 1;
+    size_t line_len = line.length();
+    int wrapped_lines = (static_cast<int>(line_len) / CHARS_PER_LINE) + 1;
     if (line_len == 0)
       wrapped_lines = 1; // Empty lines still take up height
 
@@ -415,6 +415,22 @@ void EpubHandler::nextPage() {
 void EpubHandler::prevPage() {
   if (hasPrevPage())
     m_currentPage--;
+}
+
+void EpubHandler::jumpToPage(int page) {
+  if (!m_isLoaded || m_pages.empty()) return;
+  if (page < 0) page = 0;
+  if (page >= (int)m_pages.size()) page = (int)m_pages.size() - 1;
+  m_currentPage = page;
+}
+
+int EpubHandler::getCurrentPage() const {
+  return m_currentPage;
+}
+
+int EpubHandler::getTotalPages() const {
+  if (!m_isLoaded) return 0;
+  return (int)m_pages.size();
 }
 
 bool EpubHandler::hasNextPage() const {

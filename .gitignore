@@ -1,0 +1,32 @@
+# Python & Machine Learning Data
+LICENTA_SERVERSIDE/data/
+__pycache__/
+*.pyc
+.venv/
+.idea/
+
+# Visual Studio Build Output
+TabletClient/lv_port_pc_visual_studio/Output/
+TabletClient/lv_port_pc_visual_studio/.vs/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.lib
+*.tlog
+
+# CMake Build Output
+TabletClient/build/
+CMakeCache.txt
+CMakeFiles/
+
+# Datasets and Databases
+*.sqlite
+*.db
+*.bin
+*.parquet
+*.gz
+*.json.gz
+
+# Cache
+books/.cache/

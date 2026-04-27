@@ -1,4 +1,4 @@
-﻿#include "pdfHandler.h"
+#include "pdfHandler.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -185,6 +185,24 @@ void PdfHandler::prevPage() {
     m_currentPage--;
     renderPageToBmp();
   }
+}
+
+void PdfHandler::jumpToPage(int page) {
+  if (!m_isLoaded || m_pageCount <= 0) return;
+  if (page < 0) page = 0;
+  if (page >= m_pageCount) page = m_pageCount - 1;
+  if (m_currentPage != page) {
+      m_currentPage = page;
+      renderPageToBmp();
+  }
+}
+
+int PdfHandler::getCurrentPage() const {
+    return m_currentPage;
+}
+
+int PdfHandler::getTotalPages() const {
+    return m_pageCount;
 }
 
 std::string PdfHandler::getTitle() const {

@@ -19,6 +19,10 @@ public:
 
   void nextPage();
   void prevPage();
+  void jumpToPage(int page);
+
+  int getCurrentPage() const;
+  int getTotalPages() const;
 
   bool hasNextPage() const;
   bool hasPrevPage() const;

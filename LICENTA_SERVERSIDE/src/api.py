@@ -10,17 +10,15 @@ import uvicorn
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.main import initialize_system, recommend
-from src.recommender.llm_reranker import LLMReranker
 
 app = FastAPI(
     title="Goodreads Recommender API",
-    description="A hybrid recommender combining FAISS filtering and Ollama reranking, designed for C++ LVGL Client.",
-    version="1.0.0"
+    description="A pure Semantic Recommender using ChromaDB and local Langchain Embeddings.",
+    version="2.0.0"
 )
 
-# Global model instances so FAISS is loaded once into RAM
+# Global model instances so Chroma replaces FAISS in RAM
 generator = None
-reranker = None
 
 # --- Pydantic Data Models (Swagger) ---
 class FinishedBook(BaseModel):
@@ -33,6 +31,7 @@ class RecommendationRequest(BaseModel):
     session_history: Optional[List[str]] = []
     rating_pref: Optional[float] = 4.0
     finished_books: Optional[List[FinishedBook]] = []
+    use_reviews: Optional[bool] = False
 
 class RecommendationResponse(BaseModel):
     recommendations: List[Dict[str, Any]]
@@ -41,16 +40,14 @@ class RecommendationResponse(BaseModel):
 @app.on_event("startup")
 def startup_event():
     """
-    On server boot, load the massive FAISS indices and establish an 
-    Ollama LLM connection instance so queries run in milliseconds.
+    On server boot, load the ChromaDB vector database so queries run instantly.
     """
-    global generator, reranker
+    global generator
     print("==================================================")
-    print("  Booting Recommender Engine for API endpoint...  ")
+    print("  Booting Semantic Recommender Engine...          ")
     print("==================================================")
     try:
         generator = initialize_system()
-        reranker = LLMReranker()
         print("\n[SUCCESS] Subsystems Loaded. API Gateway is accepting connections.")
     except Exception as e:
         print(f"Failed to initialize recommender models: {e}")
@@ -82,17 +79,17 @@ def get_recommendations(req: RecommendationRequest):
     Primary endpoint for the LVGL C++ Application. 
     Accepts natural language user input and returns a curated JSON array of book results.
     """
-    if generator is None or reranker is None:
+    if generator is None:
          raise HTTPException(status_code=503, detail="Models are not initialized yet.")
          
     try:
         results = recommend(
             user_profile=req.user_profile,
             generator=generator,
-            reranker=reranker,
             session_history=req.session_history,
             rating_pref=req.rating_pref,
-            finished_books=[b.model_dump() for b in req.finished_books] if req.finished_books else []
+            finished_books=[b.model_dump() for b in req.finished_books] if req.finished_books else [],
+            use_reviews=req.use_reviews
         )
         return RecommendationResponse(recommendations=results)
     except Exception as e:

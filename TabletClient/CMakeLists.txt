@@ -36,7 +36,7 @@ add_executable(TabletClient ${SOURCES})
 # Link libraries
 # gpiod for GPIO control
 # pthread for threading (used by standard library threads)
-target_link_libraries(TabletClient PRIVATE gpiod pthread zip)
+target_link_libraries(TabletClient PRIVATE gpiod pthread zip mupdf)
 
 if(TARGET lvgl)
     target_link_libraries(TabletClient PRIVATE lvgl)

@@ -38,7 +38,7 @@ def initialize_system():
         
     return generator
 
-def recommend(user_profile: str, generator: CandidateGenerator, session_history: list, rating_pref: float = 4.0, finished_books: list = None, use_reviews: bool = False, target_language: str = 'eng'):
+def recommend(user_profile: str, generator: CandidateGenerator, session_history: list, rating_pref: float = 4.0, finished_books: list = None, use_reviews: bool = False, target_language: str = 'eng', exact_match: bool = False):
     """
     Runs the full recommendation pipeline:
     1. Query ChromaDB with pure semantic embeddings using Ollama.
@@ -47,7 +47,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
     if finished_books is None:
         finished_books = []
     
-    print(f"\n======== STARTING PIPELINE ========\nUser Profile: '{user_profile}' | Use Reviews: {use_reviews} | Language: {target_language}")
+    print(f"\n======== STARTING PIPELINE ========\nUser Profile: '{user_profile}' | Use Reviews: {use_reviews} | Language: {target_language} | Exact Match: {exact_match}")
     
     # 1. Expand query context dynamically based on UI preferences
     full_query = user_profile
@@ -59,7 +59,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
             liked_context = ", ".join(liked_books)
             full_query = f"User highly rated these books: {liked_context}. Find semantic matches for their new search: {user_profile}"
     
-    if not use_reviews:
+    if exact_match:
         # EXACT BM25 KEYWORD SEARCH (SQLite FTS5)
         print(f"\n[FTS5 Engine] Querying SQLite BM25 for Exact Matches: '{user_profile}'")
         conn = sqlite3.connect(DATA_DIR / "book_mapping.db")
@@ -115,8 +115,15 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
     print(f"\n=== Final Semantic Results (Top {TOP_K_CANDIDATES}) ===")
     print(final_candidates[['title', 'similarity_score', 'average_rating']].to_string(index=False).encode('utf-8', 'ignore').decode('utf-8'))
     
-    # Extract records directly. No LLM JSON decoding required!
-    return final_candidates.to_dict('records')
+    # 5. LLM Reranking (Semantic Context)
+    from src.recommender.llm_reranker import LLMReranker
+    reranker = LLMReranker()
+    try:
+        reranked_results = reranker.rerank(user_profile, final_candidates)
+        return reranked_results
+    except Exception as e:
+        print(f"[LLM Warning] Reranker failed ({e}), falling back to standard results.")
+        return final_candidates.to_dict('records')
 
 if __name__ == "__main__":
     print("\n================================================")

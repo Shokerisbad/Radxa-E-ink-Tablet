@@ -32,6 +32,7 @@ class RecommendationRequest(BaseModel):
     rating_pref: Optional[float] = 4.0
     finished_books: Optional[List[FinishedBook]] = []
     use_reviews: Optional[bool] = False
+    exact_match: Optional[bool] = False
     language: Optional[str] = 'eng'
 
 class RecommendationResponse(BaseModel):
@@ -91,7 +92,8 @@ def get_recommendations(req: RecommendationRequest):
             rating_pref=req.rating_pref,
             finished_books=[b.model_dump() for b in req.finished_books] if req.finished_books else [],
             use_reviews=req.use_reviews,
-            target_language=req.language
+            target_language=req.language,
+            exact_match=req.exact_match
         )
         return RecommendationResponse(recommendations=results)
     except Exception as e:

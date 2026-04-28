@@ -128,7 +128,7 @@ static bool is_epub_active = false;
 static bool is_bottombar_visible = false; // Track toggle state
 
 static void build_library_list(); // Forward declaration
-static void request_ai_recommendation(const std::string &user_prompt, bool use_reviews = true);
+static void request_ai_recommendation(const std::string &user_prompt, bool exact_match = false, bool use_reviews = true);
 
 static void show_rating_popup(const std::string &book_title, int total_pages) {
   lv_obj_t *modal = lv_obj_create(lv_scr_act());
@@ -615,9 +615,14 @@ void build_tablet_ui() {
   lv_obj_set_style_pad_all(ai_input_bar, 5, 0);
 
   ai_content = lv_obj_create(screen_ai);
-  lv_obj_set_size(ai_content, 460, 440);
-  lv_obj_align(ai_content, LV_ALIGN_TOP_MID, 0, 120);
+  lv_obj_set_size(ai_content, 460, 400);
+  lv_obj_align(ai_content, LV_ALIGN_TOP_MID, 0, 160);
   lv_obj_set_flex_flow(ai_content, LV_FLEX_FLOW_COLUMN);
+
+  lv_obj_t * history_cb = lv_checkbox_create(screen_ai);
+  lv_checkbox_set_text(history_cb, "Use Reading History");
+  lv_obj_align(history_cb, LV_ALIGN_TOP_LEFT, 20, 120);
+  lv_obj_add_state(history_cb, LV_STATE_CHECKED); // Default to checked
 
   ai_input_ta = lv_textarea_create(ai_input_bar);
   lv_textarea_set_one_line(ai_input_ta, true);
@@ -629,13 +634,15 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(
       ai_send_btn,
       [](lv_event_t *e) {
+        lv_obj_t * cb = (lv_obj_t *)lv_event_get_user_data(e);
         const char *txt = lv_textarea_get_text(ai_input_ta);
         if (txt && strlen(txt) > 0) {
-          request_ai_recommendation(txt, true);
+          bool use_history = lv_obj_has_state(cb, LV_STATE_CHECKED);
+          request_ai_recommendation(txt, false, use_history); // Semantic Match
           lv_textarea_set_text(ai_input_ta, "");
         }
       },
-      LV_EVENT_CLICKED, NULL);
+      LV_EVENT_CLICKED, history_cb);
   lv_obj_t *ai_send_lbl = lv_label_create(ai_send_btn);
   lv_label_set_text(ai_send_lbl, "Recommend");
   lv_obj_center(ai_send_lbl);
@@ -645,13 +652,15 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(
       ai_search_btn,
       [](lv_event_t *e) {
+        lv_obj_t * cb = (lv_obj_t *)lv_event_get_user_data(e);
         const char *txt = lv_textarea_get_text(ai_input_ta);
         if (txt && strlen(txt) > 0) {
-          request_ai_recommendation(txt, false);
+          bool use_history = lv_obj_has_state(cb, LV_STATE_CHECKED);
+          request_ai_recommendation(txt, true, use_history); // Exact Match
           lv_textarea_set_text(ai_input_ta, "");
         }
       },
-      LV_EVENT_CLICKED, NULL);
+      LV_EVENT_CLICKED, history_cb);
   lv_obj_t *ai_search_lbl = lv_label_create(ai_search_btn);
   lv_label_set_text(ai_search_lbl, "Search");
   lv_obj_center(ai_search_lbl);
@@ -797,14 +806,14 @@ static void render_ai_async_cb(void* user_data) {
 }
 
 // --- NETWORK HTTP REQUEST ---
-static void request_ai_recommendation(const std::string &user_prompt, bool use_reviews) {
+static void request_ai_recommendation(const std::string &user_prompt, bool exact_match, bool use_reviews) {
   lv_scr_load(screen_ai);
   lv_obj_clean(ai_content);
   lv_obj_t *loading_lbl = lv_label_create(ai_content);
   lv_label_set_text(loading_lbl, "Thinking...");
 
   // Run in background thread to not block LVGL UI
-  std::thread([user_prompt, use_reviews]() {
+  std::thread([user_prompt, exact_match, use_reviews]() {
     httplib::Client cli("127.0.0.1", 8000);
     cli.set_connection_timeout(5, 0);   // 5 seconds to connect
     cli.set_read_timeout(60, 0);        // 60 seconds max for semantic search and downloading covers
@@ -813,6 +822,7 @@ static void request_ai_recommendation(const std::string &user_prompt, bool use_r
                     {"session_history", json::array()},
                     {"rating_pref", 4.0},
                     {"use_reviews", use_reviews},
+                    {"exact_match", exact_match},
                     {"language", "eng"}};
 
     json fin_books = json::array();

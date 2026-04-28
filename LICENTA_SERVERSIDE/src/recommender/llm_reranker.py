@@ -16,8 +16,8 @@ class LLMReranker:
         candidates_list = []
         for idx, row in candidates_df.iterrows():
             candidates_list.append({
-                "id": str(row['book_id']),
-                "title": row['title'],
+                "id": str(row.get('book_id', row.get('id', ''))),
+                "title": row.get('title', 'Unknown'),
                 "rating": round(row['average_rating'], 2),
                 "tags": row.get('tags', ''),
                 "year": row.get('publication_year', ''),
@@ -42,9 +42,14 @@ User Profile: {user_profile}
 Candidates:
 {candidates_json}
 
-Return your answer as a raw JSON array containing exactly the same books, but ordered from Most Recommended (index 0) to Least Recommended. 
-Each object in the array MUST contain all original fields ('id', 'title', 'rating', 'tags', 'year', 'pages', 'image_url') plus a new field 'reasoning' (1 sentence explaining why it fits or misses the user's specific taste).
+Return your answer as a raw JSON array, ordered from Most Recommended (index 0) to Least Recommended. 
+Each object in the array MUST contain exactly two fields: 'id' (the string ID of the book) and 'reasoning' (1 sentence explaining why it fits or misses the user's specific taste).
 Output ONLY valid JSON.
+Example output:
+[
+  {{"id": "12345", "reasoning": "Fits the user's love for dark sci-fi."}},
+  {{"id": "67890", "reasoning": "Matches the political betrayal theme."}}
+]
 """
 
         print(f"Querying Ollama ({self.model_name}) for semantic reranking...")
@@ -88,7 +93,7 @@ Output ONLY valid JSON.
             
             # Robust Merge: The LLM often hallucinates or drops fields (like image_url)
             # or truncates the list early. We must map its reasoning back to the ORIGINAL data!
-            original_books = {str(row['book_id']): row.to_dict() for _, row in candidates_df.iterrows()}
+            original_books = {str(row.get('book_id', row.get('id', ''))): row.to_dict() for _, row in candidates_df.iterrows()}
             final_list = []
             seen_ids = set()
             

@@ -70,7 +70,7 @@ void create_status_bar() {
 
     // Create a timer to update these statuses
     lv_timer_create([](lv_timer_t * timer) {
-        lv_obj_t ** labels = (lv_obj_t **)timer->user_data;
+        lv_obj_t ** labels = (lv_obj_t **)lv_timer_get_user_data(timer);
         lv_obj_t * w_lbl = labels[0];
         lv_obj_t * v_lbl = labels[1];
         lv_obj_t * b_lbl = labels[2];
@@ -121,23 +121,13 @@ int main(void) {
         return -1;
     }
 
-    // 3. Register Display Driver in LVGL
-    static lv_disp_draw_buf_t draw_buf;
+    // 3. Register Display Driver in LVGL (v9 API)
     // We allocate a full screen buffer. LVGL will render into this and pass it to flush_cb.
-    // For LV_COLOR_DEPTH 1, it's w*h/8 bytes. For LV_COLOR_DEPTH 32, it's w*h*4 bytes.
-    // We use the LV_COLOR_DEPTH defined in lv_conf.h.
-    static lv_color_t * buf1 = (lv_color_t *)malloc(DISP_BUF_SIZE * sizeof(lv_color_t));
-    lv_disp_draw_buf_init(&draw_buf, buf1, NULL, DISP_BUF_SIZE);
-
-    static lv_disp_drv_t disp_drv;
-    lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res = DISP_HOR_RES;
-    disp_drv.ver_res = DISP_VER_RES;
-    disp_drv.flush_cb = RadxaEPD::flush_cb;
-    disp_drv.draw_buf = &draw_buf;
-    disp_drv.full_refresh = 0; // Allow partial refresh!
-
-    lv_disp_drv_register(&disp_drv);
+    static uint8_t * buf1 = (uint8_t *)malloc(DISP_BUF_SIZE * sizeof(lv_color32_t));
+    
+    lv_display_t * disp = lv_display_create(DISP_HOR_RES, DISP_VER_RES);
+    lv_display_set_flush_cb(disp, RadxaEPD::flush_cb);
+    lv_display_set_buffers(disp, buf1, NULL, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     create_status_bar();
 

@@ -172,9 +172,9 @@ void RadxaEPD::wake() {
     init(); // Re-run initialization
 }
 
-void RadxaEPD::flush_cb(struct _lv_disp_drv_t * disp_drv, const struct _lv_area_t * area, struct _lv_color_t * color_p) {
+void RadxaEPD::flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map) {
     if (!g_epd_instance) {
-        lv_disp_flush_ready(disp_drv);
+        lv_display_flush_ready(disp);
         return;
     }
 
@@ -198,11 +198,11 @@ void RadxaEPD::flush_cb(struct _lv_disp_drv_t * disp_drv, const struct _lv_area_
     // Manual packing (assuming LV_COLOR_DEPTH 32 or 16 for the visual studio simulator compatibility, 
     // we manually threshold it).
 #if LV_COLOR_DEPTH == 32
-    lv_color32_t * buf32 = (lv_color32_t *)color_p;
+    lv_color32_t * buf32 = (lv_color32_t *)px_map;
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             int idx = y * w + x;
-            uint8_t brightness = (buf32[idx].ch.red + buf32[idx].ch.green + buf32[idx].ch.blue) / 3;
+            uint8_t brightness = (buf32[idx].red + buf32[idx].green + buf32[idx].blue) / 3;
             if (brightness < 128) {
                 // Black pixel (0 bit)
                 int byte_idx = idx / 8;
@@ -213,7 +213,7 @@ void RadxaEPD::flush_cb(struct _lv_disp_drv_t * disp_drv, const struct _lv_area_
     }
 #else
     // If LV_COLOR_DEPTH 1 is used:
-    uint8_t * buf8 = (uint8_t *)color_p;
+    uint8_t * buf8 = (uint8_t *)px_map;
     memcpy(bw_buffer.data(), buf8, num_bytes);
 #endif
 
@@ -254,7 +254,7 @@ void RadxaEPD::flush_cb(struct _lv_disp_drv_t * disp_drv, const struct _lv_area_
         g_epd_instance->send_command(0x92); // PARTIAL_OUT
     }
 
-    lv_disp_flush_ready(disp_drv);
+    lv_display_flush_ready(disp);
 }
 
 // System Status Checkers

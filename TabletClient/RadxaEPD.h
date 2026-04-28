@@ -3,9 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-// Forward declaration for lv_disp_drv_t
-struct _lv_disp_drv_t;
-struct _lv_color_t;
+#include "lvgl/lvgl.h"
 
 class RadxaEPD {
 public:
@@ -16,7 +14,7 @@ public:
     bool init();
 
     // LVGL flush callback
-    static void flush_cb(struct _lv_disp_drv_t * disp_drv, const struct _lv_area_t * area, struct _lv_color_t * color_p);
+    static void flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map);
 
     // Puts the display to deep sleep
     void sleep();

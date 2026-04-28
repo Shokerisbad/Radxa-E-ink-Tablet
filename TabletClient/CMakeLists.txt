@@ -8,6 +8,9 @@ set(CMAKE_C_STANDARD 99)
 # The LVGL source is inside the Visual Studio port folder
 set(LVGL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglPlatform/lvgl)
 
+# Tell LVGL exactly where our configuration file is located
+set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglWindowsSimulator/lv_conf.h CACHE PATH "Path to lv_conf.h")
+
 if(EXISTS ${LVGL_DIR}/CMakeLists.txt)
     add_subdirectory(${LVGL_DIR})
 else()

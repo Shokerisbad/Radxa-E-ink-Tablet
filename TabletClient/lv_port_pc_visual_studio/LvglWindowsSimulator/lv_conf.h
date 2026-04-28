@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file lv_conf.h
  * Configuration file for v9.3.0-dev
  */
@@ -107,7 +107,11 @@
  * - LV_OS_MQX
  * - LV_OS_SDL2
  * - LV_OS_CUSTOM */
-#define LV_USE_OS   LV_OS_WINDOWS
+#ifdef _WIN32
+    #define LV_USE_OS   LV_OS_WINDOWS
+#else
+    #define LV_USE_OS   LV_OS_PTHREAD
+#endif
 
 #if LV_USE_OS == LV_OS_CUSTOM
     #define LV_OS_CUSTOM_INCLUDE <stdint.h>
@@ -1260,7 +1264,11 @@
 #endif
 
 /** LVGL Windows backend */
-#define LV_USE_WINDOWS    1
+#ifdef _WIN32
+    #define LV_USE_WINDOWS    1
+#else
+    #define LV_USE_WINDOWS    0
+#endif
 
 /** LVGL UEFI backend */
 #define LV_USE_UEFI 0

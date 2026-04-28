@@ -20,6 +20,7 @@ endif()
 # We need the lv_conf.h directory in the include path
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglWindowsSimulator)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglPlatform)
 
 # Our source files for the Linux/Radxa build
 set(SOURCES

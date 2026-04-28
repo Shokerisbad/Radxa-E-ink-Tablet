@@ -26,7 +26,8 @@ def convert():
         publication_year UNINDEXED,
         num_pages UNINDEXED,
         image_url UNINDEXED,
-        tags
+        tags,
+        language_code UNINDEXED
     )''')
     
     print("Streaming Parquet -> SQLite (Zero RAM Overhead)...")
@@ -45,6 +46,7 @@ def convert():
         pages = d.get('num_pages', [''] * len(book_ids))
         images = d.get('image_url', [''] * len(book_ids))
         tags = d.get('tags', [''] * len(book_ids))
+        language_codes = d.get('language_code', [''] * len(book_ids))
         
         records = []
         for i in range(len(book_ids)):
@@ -66,11 +68,12 @@ def convert():
                 str(years[i]) if years[i] is not None else "",
                 str(pages[i]) if pages[i] is not None else "",
                 str(images[i]) if images[i] is not None else "",
-                str(tags[i]) if tags[i] is not None else ""
+                str(tags[i]) if tags[i] is not None else "",
+                str(language_codes[i]) if language_codes[i] is not None else ""
             ))
             faiss_id += 1
             
-        cur.executemany("INSERT INTO books VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
+        cur.executemany("INSERT INTO books VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
         conn.commit()
         print(f"Processed {faiss_id} rows...")
         

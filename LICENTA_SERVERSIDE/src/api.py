@@ -32,6 +32,7 @@ class RecommendationRequest(BaseModel):
     rating_pref: Optional[float] = 4.0
     finished_books: Optional[List[FinishedBook]] = []
     use_reviews: Optional[bool] = False
+    language: Optional[str] = 'eng'
 
 class RecommendationResponse(BaseModel):
     recommendations: List[Dict[str, Any]]
@@ -89,7 +90,8 @@ def get_recommendations(req: RecommendationRequest):
             session_history=req.session_history,
             rating_pref=req.rating_pref,
             finished_books=[b.model_dump() for b in req.finished_books] if req.finished_books else [],
-            use_reviews=req.use_reviews
+            use_reviews=req.use_reviews,
+            target_language=req.language
         )
         return RecommendationResponse(recommendations=results)
     except Exception as e:

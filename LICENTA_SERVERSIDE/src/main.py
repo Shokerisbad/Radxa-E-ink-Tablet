@@ -11,19 +11,34 @@ from src.recommender.candidate_generator import CandidateGenerator
 from src.config import TOP_K_CANDIDATES, DATA_DIR
 
 def initialize_system():
-    """Initializes and builds the Chroma Vector index if it doesn't exist."""
+    """Initializes and builds the Chroma Vector index and SQLite DB if they don't exist."""
     db_path = DATA_DIR / "chroma_db"
+    sqlite_path = DATA_DIR / "book_mapping.db"
     generator = CandidateGenerator(str(db_path))
     
-    if not db_path.exists():
-        print("First run detected. Building the pure Semantic Vector database...")
+    if not db_path.exists() or not sqlite_path.exists():
+        print("First run detected. Parsing JSON and building databases...")
+        from src.config import MAPPING_DF_PATH
+        
+        # 1. Parse JSON -> DataFrame
+        df = load_books_metadata()
+        
+        # 2. Save intermediate Parquet for SQLite
+        df.to_parquet(MAPPING_DF_PATH)
+        
+        # 3. Build ChromaDB
+        generator.books_df = df
         generator.build_index()
+        
+        # 4. Build SQLite FTS5
+        import src.convert_to_sqlite as sqlite_builder
+        sqlite_builder.convert()
     else:
-        print("Loading existing Chroma vector database...")
+        print("Loading existing databases...")
         
     return generator
 
-def recommend(user_profile: str, generator: CandidateGenerator, session_history: list, rating_pref: float = 4.0, finished_books: list = None, use_reviews: bool = False):
+def recommend(user_profile: str, generator: CandidateGenerator, session_history: list, rating_pref: float = 4.0, finished_books: list = None, use_reviews: bool = False, target_language: str = 'eng'):
     """
     Runs the full recommendation pipeline:
     1. Query ChromaDB with pure semantic embeddings using Ollama.
@@ -32,7 +47,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
     if finished_books is None:
         finished_books = []
     
-    print(f"\n======== STARTING PIPELINE ========\nUser Profile: '{user_profile}' | Use Reviews: {use_reviews}")
+    print(f"\n======== STARTING PIPELINE ========\nUser Profile: '{user_profile}' | Use Reviews: {use_reviews} | Language: {target_language}")
     
     # 1. Expand query context dynamically based on UI preferences
     full_query = user_profile
@@ -57,12 +72,12 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         df_query = """
             SELECT book_id as id, title, average_rating, image_url, rank as similarity_score
             FROM books
-            WHERE books MATCH ?
+            WHERE books MATCH ? AND (language_code = ? OR language_code = 'en-US' OR language_code = 'en-GB' OR language_code = '')
             ORDER BY rank
             LIMIT 50
         """
         try:
-            candidates_df = pd.read_sql_query(df_query, conn, params=(fts_query,))
+            candidates_df = pd.read_sql_query(df_query, conn, params=(fts_query, target_language))
         except Exception as e:
             print(f"[FTS5 Warning] Query failed (possibly invalid syntax): {e}")
             candidates_df = pd.DataFrame()
@@ -71,7 +86,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
     else:
         # 2. Candidate Generation (Instant Semantic Vector Search)
         print(f"\n[Chroma Engine] Querying ChromaDB for Semantic Vectors related to: '{full_query}'")
-        candidates_df = generator.generate_candidates(full_query, top_k=50)
+        candidates_df = generator.generate_candidates(full_query, top_k=50, language_code=target_language)
     
     if candidates_df.empty:
         print("[Warning] No candidates found! Did the vector database build correctly?")
@@ -90,9 +105,10 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         
     # 4. Deduplication
     # Goodreads contains hundreds of duplicate entries for the exact same book (Hardcover, Kindle, Audiobook, Translations).
-    # We drop any duplicates matching the exact same title to prevent flooding the UI.
+    # We strip out trailing series text like '(Metro #1)' to aggressively deduplicate them.
     if 'title' in candidates_df.columns:
-        candidates_df = candidates_df.drop_duplicates(subset=['title'], keep='first')
+        candidates_df['clean_title'] = candidates_df['title'].str.replace(r'\s*\(.*?\)\s*', '', regex=True).str.strip().str.lower()
+        candidates_df = candidates_df.drop_duplicates(subset=['clean_title'], keep='first')
         
     final_candidates = candidates_df.head(TOP_K_CANDIDATES)
     

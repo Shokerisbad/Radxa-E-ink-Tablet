@@ -49,7 +49,8 @@ class CandidateGenerator:
                     "tags": tags,
                     "publication_year": str(row.get("publication_year", "")),
                     "num_pages": str(row.get("num_pages", "")),
-                    "image_url": str(row.get("image_url", ""))
+                    "image_url": str(row.get("image_url", "")),
+                    "language_code": str(row.get("language_code", ""))
                 }
             )
             docs.append(doc)
@@ -91,7 +92,7 @@ class CandidateGenerator:
             
         print("Chroma Vector Store built and persisted successfully!")
 
-    def generate_candidates(self, query: str, top_k: int = TOP_K_CANDIDATES) -> pd.DataFrame:
+    def generate_candidates(self, query: str, top_k: int = TOP_K_CANDIDATES, language_code: str = "") -> pd.DataFrame:
         """
         Queries ChromaDB for the closest semantic matches to the user profile text!
         """
@@ -100,7 +101,8 @@ class CandidateGenerator:
             return pd.DataFrame()
             
         # Perform distance search (L2 distance by default in Chroma)
-        results = self.vector_store.similarity_search_with_score(query, k=top_k)
+        filter_dict = {"language_code": language_code} if language_code else None
+        results = self.vector_store.similarity_search_with_score(query, k=top_k, filter=filter_dict)
         
         # Convert to dataframe
         formatted = []

@@ -46,7 +46,8 @@ def load_books_metadata(filepath: str = BOOKS_DATA_PATH, min_rating_threshold: i
                     'num_pages': b.get('num_pages'),
                     'publication_year': b.get('publication_year'),
                     'image_url': b.get('image_url', ''),
-                    'tags': tags_str
+                    'tags': tags_str,
+                    'language_code': b.get('language_code', '')
                 })
             except Exception as e:
                 continue

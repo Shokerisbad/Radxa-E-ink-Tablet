@@ -807,12 +807,13 @@ static void request_ai_recommendation(const std::string &user_prompt, bool use_r
   std::thread([user_prompt, use_reviews]() {
     httplib::Client cli("127.0.0.1", 8000);
     cli.set_connection_timeout(5, 0);   // 5 seconds to connect
-    cli.set_read_timeout(10, 0);        // 10 seconds max for semantic search
+    cli.set_read_timeout(60, 0);        // 60 seconds max for semantic search and downloading covers
 
     json payload = {{"user_profile", user_prompt},
                     {"session_history", json::array()},
                     {"rating_pref", 4.0},
-                    {"use_reviews", use_reviews}};
+                    {"use_reviews", use_reviews},
+                    {"language", "eng"}};
 
     json fin_books = json::array();
     for (const auto &b : locally_finished_books) {

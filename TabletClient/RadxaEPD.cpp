@@ -20,12 +20,12 @@
 #define SPI_MODE SPI_MODE_0
 #define SPI_BITS 8
 
-// GPIO Configuration
-// Using Linux pin names directly (as requested)
-#define PIN_CS_NAME   "D4_C6"
-#define PIN_DC_NAME   "D3_C1"
-#define PIN_RST_NAME  "D3_B2"
-#define PIN_BUSY_NAME "D4_C5"
+// GPIO Configuration (Radxa Zero 3W physical pin mapping)
+// Pin 24 = CS, Pin 22 = DC, Pin 18 = RST, Pin 21 = BUSY
+#define PIN_CS_NAME   "GPIO4_C6"
+#define PIN_DC_NAME   "GPIO3_C1"
+#define PIN_RST_NAME  "GPIO3_B2"
+#define PIN_BUSY_NAME "GPIO4_C5"
 
 RadxaEPD* g_epd_instance = nullptr;
 

@@ -56,8 +56,13 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         # Only inject books that the user actively reviewed positively 
         liked_books = [b.get("title", "") for b in finished_books if b.get("user_rating", 0.0) >= rating_pref]
         if liked_books:
-            liked_context = ", ".join(liked_books)
-            full_query = f"User highly rated these books: {liked_context}. Find semantic matches for their new search: {user_profile}"
+            latest = liked_books[-1]
+            others = liked_books[:-1][-2:] # Up to 2 other recent books
+            if others:
+                liked_context = f"'{latest}' (most recent), as well as {', '.join(others)}"
+            else:
+                liked_context = f"'{latest}'"
+            full_query = f"The user recently loved {liked_context}. Find semantic matches for their new search: {user_profile}"
     
     if exact_match:
         # EXACT BM25 KEYWORD SEARCH (SQLite FTS5)
@@ -70,7 +75,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         
         # FTS5 rank is mathematically negative (lower is better), which perfectly mimics Chroma L2 distance!
         df_query = """
-            SELECT book_id as id, title, average_rating, image_url, rank as similarity_score
+            SELECT book_id as id, title, average_rating, image_url, description, tags, publication_year, num_pages, rank as similarity_score
             FROM books
             WHERE books MATCH ? AND (language_code = ? OR language_code = 'en-US' OR language_code = 'en-GB' OR language_code = '')
             ORDER BY rank

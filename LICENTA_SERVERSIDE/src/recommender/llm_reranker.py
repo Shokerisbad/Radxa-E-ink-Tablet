@@ -18,12 +18,12 @@ class LLMReranker:
             candidates_list.append({
                 "id": str(row.get('book_id', row.get('id', ''))),
                 "title": row.get('title', 'Unknown'),
-                "rating": round(row['average_rating'], 2),
+                "rating": round(row.get('average_rating', 0.0), 2) if not pd.isna(row.get('average_rating')) else 0.0,
                 "tags": row.get('tags', ''),
                 "year": row.get('publication_year', ''),
                 "pages": row.get('num_pages', ''),
                 "image_url": row.get('image_url', ''),
-                "description": row['description'][:200] + "..." if isinstance(row['description'], str) else ""
+                "description": str(row.get('description', ''))[:200] + "..." if row.get('description') else ""
             })
         return json.dumps(candidates_list, indent=2)
 

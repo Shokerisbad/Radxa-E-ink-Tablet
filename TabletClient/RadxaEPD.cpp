@@ -183,16 +183,63 @@ bool RadxaEPD::init() {
     send_command(0xE3);
     send_data(0x22);
 
-    std::cout << "GDEY075T7 EPD initialized successfully." << std::endl;
+    // === Initial Clear: Write BOTH frame buffers to white ===
+    // The UC8179 compares OLD (0x10) vs NEW (0x13) buffers to calculate
+    // the e-ink waveform. If OLD has stale data from a previous run,
+    // the display will invert or show garbage.
+    const size_t frame_bytes = 800 * 480 / 8; // 48000 bytes
+    std::vector<uint8_t> white_buf(frame_bytes, 0xFF);
+
+    // Write OLD buffer (previous image) to white
+    send_command(0x10);
+    send_data_array(white_buf.data(), frame_bytes);
+
+    // Write NEW buffer (current image) to white
+    send_command(0x13);
+    send_data_array(white_buf.data(), frame_bytes);
+
+    // Temperature sensor for OTP LUT waveform
+    send_command(0xE0);
+    send_data(0x00);
+    send_command(0x41);
+    send_data(0x00);
+
+    // Full refresh to clear the panel
+    send_command(0x12);
+    wait_until_idle();
+
+    std::cout << "GDEY075T7 EPD initialized and cleared." << std::endl;
     return true;
 }
 
 void RadxaEPD::sleep() {
+    std::cout << "Clearing display to white before sleep..." << std::endl;
+
+    // Clear both buffers to white so the screen is blank when powered off
+    const size_t frame_bytes = 800 * 480 / 8;
+    std::vector<uint8_t> white_buf(frame_bytes, 0xFF);
+
+    send_command(0x10);
+    send_data_array(white_buf.data(), frame_bytes);
+    send_command(0x13);
+    send_data_array(white_buf.data(), frame_bytes);
+
+    // Refresh to apply
+    send_command(0xE0);
+    send_data(0x00);
+    send_command(0x41);
+    send_data(0x00);
+    send_command(0x12);
+    wait_until_idle();
+
+    // Now power off and enter deep sleep
     send_command(0x02); // POWER OFF
     wait_until_idle();
     send_command(0x07); // DEEP_SLEEP
-    send_data(0xA5);    // Data check code
+    send_data(0xA5);    // Check code
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::cout << "Display is asleep." << std::endl;
 }
 
 void RadxaEPD::wake() {

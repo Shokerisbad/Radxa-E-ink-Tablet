@@ -133,35 +133,63 @@ bool RadxaEPD::init() {
     hardware_reset();
     wait_until_idle();
 
-    // 0x01: POWER_SETTING
+    // === GDEY075T7 (UC8179) Initialization — from GxEPD2 reference ===
+    
+    // PANEL_SETTING (0x00)
+    // 0x1F = KW mode (B/W), full update LUT from OTP
+    send_command(0x00);
+    send_data(0x1F);
+
+    // POWER_SETTING (0x01) — 5 bytes required!
     send_command(0x01);
-    uint8_t pwr_data[] = {0x07, 0x07, 0x3f, 0x3f};
-    send_data_array(pwr_data, sizeof(pwr_data));
+    send_data(0x07); // Enable internal DC-DC
+    send_data(0x07); // VGH=20V, VGL=-20V
+    send_data(0x3F); // VDH=15V
+    send_data(0x3F); // VDL=-15V
+    send_data(0x09); // VDHR=4.2V (was missing!)
 
-    // 0x04: POWER ON
+    // Booster Soft Start (0x06) — critical for stable power ramp
+    send_command(0x06);
+    send_data(0x17);
+    send_data(0x17);
+    send_data(0x28);
+    send_data(0x17);
+
+    // POWER ON (0x04)
     send_command(0x04);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    wait_until_idle();
+    wait_until_idle(); // Must wait for BUSY, not just sleep!
 
-    // FIX 1: Using standard 0x0F and 0x17 VCOM
-    send_command(0x00); // PANEL_SETTING
-    send_data(0x0F);    // B/W setting
+    // RESOLUTION_SETTING (0x61) — 800x480
+    send_command(0x61);
+    send_data(0x03); // 800 / 256 = 3
+    send_data(0x20); // 800 % 256 = 32 = 0x20
+    send_data(0x01); // 480 / 256 = 1
+    send_data(0xE0); // 480 % 256 = 224 = 0xE0
 
-    send_command(0x61); // RESOLUTION_SETTING
-    uint8_t res_data[] = {0x03, 0x20, 0x01, 0xE0}; // 800x480
-    send_data_array(res_data, sizeof(res_data));
+    // DUSPI (0x15) — Disable dual SPI
+    send_command(0x15);
+    send_data(0x00);
 
-    send_command(0x50); // VCOM_AND_DATA_INTERVAL_SETTING
-    uint8_t vcom_data[] = {0x17, 0x07};
-    send_data_array(vcom_data, sizeof(vcom_data));
+    // VCOM AND DATA INTERVAL SETTING (0x50)
+    send_command(0x50);
+    send_data(0x29); // LUTKW, N2OCP: copy new to old
+    send_data(0x07); // CDI default
 
-    send_command(0x60); // TCON_SETTING
+    // TCON SETTING (0x60)
+    send_command(0x60);
     send_data(0x22);
 
+    // PWS (0xE3)
+    send_command(0xE3);
+    send_data(0x22);
+
+    std::cout << "GDEY075T7 EPD initialized successfully." << std::endl;
     return true;
 }
 
 void RadxaEPD::sleep() {
+    send_command(0x02); // POWER OFF
+    wait_until_idle();
     send_command(0x07); // DEEP_SLEEP
     send_data(0xA5);    // Data check code
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -185,18 +213,11 @@ void RadxaEPD::flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * p
     int w = x2 - x1 + 1;
     int h = y2 - y1 + 1;
 
-    // Convert LVGL color buffer to 1-bit monochrome buffer
-    // Assuming LV_COLOR_DEPTH 1, LVGL already packs 8 pixels per byte.
-    // If LV_COLOR_DEPTH is 16 or 32, we would need to convert here.
-    // Let's assume LVGL is set to 8-bit or 1-bit. For simplicity, if we get 8-bit or 32-bit:
-    
-    size_t num_bytes = (w * h) / 8;
-    if ((w * h) % 8 != 0) num_bytes++;
-    
-    std::vector<uint8_t> bw_buffer(num_bytes, 0xFF);
-    
-    // Manual packing (assuming LV_COLOR_DEPTH 32 or 16 for the visual studio simulator compatibility, 
-    // we manually threshold it).
+    // Convert LVGL color buffer to 1-bit monochrome packed buffer
+    // EPD expects: 1 = white, 0 = black, MSB first, 8 pixels per byte
+    size_t num_bytes = (w * h + 7) / 8;
+    std::vector<uint8_t> bw_buffer(num_bytes, 0xFF); // default white
+
 #if LV_COLOR_DEPTH == 32
     lv_color32_t * buf32 = (lv_color32_t *)px_map;
     for (int y = 0; y < h; y++) {
@@ -204,7 +225,23 @@ void RadxaEPD::flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * p
             int idx = y * w + x;
             uint8_t brightness = (buf32[idx].red + buf32[idx].green + buf32[idx].blue) / 3;
             if (brightness < 128) {
-                // Black pixel (0 bit)
+                int byte_idx = idx / 8;
+                int bit_idx = 7 - (idx % 8);
+                bw_buffer[byte_idx] &= ~(1 << bit_idx);
+            }
+        }
+    }
+#elif LV_COLOR_DEPTH == 16
+    uint16_t * buf16 = (uint16_t *)px_map;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int idx = y * w + x;
+            // RGB565: extract approximate brightness
+            uint8_t r = (buf16[idx] >> 11) & 0x1F;
+            uint8_t g = (buf16[idx] >> 5) & 0x3F;
+            uint8_t b = buf16[idx] & 0x1F;
+            uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
+            if (brightness < 128) {
                 int byte_idx = idx / 8;
                 int bit_idx = 7 - (idx % 8);
                 bw_buffer[byte_idx] &= ~(1 << bit_idx);
@@ -212,43 +249,49 @@ void RadxaEPD::flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * p
         }
     }
 #else
-    // If LV_COLOR_DEPTH 1 is used:
-    uint8_t * buf8 = (uint8_t *)px_map;
-    memcpy(bw_buffer.data(), buf8, num_bytes);
+    // LV_COLOR_DEPTH 8 or 1:
+    memcpy(bw_buffer.data(), px_map, num_bytes);
 #endif
 
-    // Determine if full or partial refresh
-    if (x1 == 0 && y1 == 0 && w == 800 && h == 480) {
-        // Full Refresh
-        g_epd_instance->send_command(0x10);
+    bool is_full = (x1 == 0 && y1 == 0 && w == 800 && h == 480);
+
+    if (is_full) {
+        // --- Full Refresh ---
+        // Write new image data to command 0x13 (NEW data)
+        g_epd_instance->send_command(0x13);
         g_epd_instance->send_data_array(bw_buffer.data(), num_bytes);
-        
-        g_epd_instance->send_command(0x12); // DISPLAY_REFRESH
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        // Temperature sensor setup (use internal sensor for OTP LUT waveform)
+        g_epd_instance->send_command(0xE0); // Cascade Setting
+        g_epd_instance->send_data(0x00);    // no TSFIX
+        g_epd_instance->send_command(0x41); // TSE
+        g_epd_instance->send_data(0x00);    // internal sensor
+
+        // Display Refresh
+        g_epd_instance->send_command(0x12);
         g_epd_instance->wait_until_idle();
     } else {
-        // Partial Refresh
-        g_epd_instance->send_command(0x50);
-        g_epd_instance->send_data(0xA9);
-        g_epd_instance->send_data(0x07);
+        // --- Partial Refresh ---
+        // Align x to byte boundary (required by UC8179)
+        int x1_aligned = x1 & 0xFFF8;
+        int x2_aligned = x2 | 0x0007;
 
         g_epd_instance->send_command(0x91); // PARTIAL_IN
         g_epd_instance->send_command(0x90); // PARTIAL_WINDOW
-        g_epd_instance->send_data(x1 / 256);
-        g_epd_instance->send_data(x1 % 256);
-        g_epd_instance->send_data(x2 / 256);
-        g_epd_instance->send_data(x2 % 256);
+        g_epd_instance->send_data(x1_aligned / 256);
+        g_epd_instance->send_data(x1_aligned % 256);
+        g_epd_instance->send_data(x2_aligned / 256);
+        g_epd_instance->send_data(x2_aligned % 256);
         g_epd_instance->send_data(y1 / 256);
         g_epd_instance->send_data(y1 % 256);
         g_epd_instance->send_data(y2 / 256);
         g_epd_instance->send_data(y2 % 256);
         g_epd_instance->send_data(0x01);
 
-        g_epd_instance->send_command(0x13);
+        g_epd_instance->send_command(0x13); // NEW data
         g_epd_instance->send_data_array(bw_buffer.data(), num_bytes);
-        
+
         g_epd_instance->send_command(0x12); // DISPLAY_REFRESH
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
         g_epd_instance->wait_until_idle();
 
         g_epd_instance->send_command(0x92); // PARTIAL_OUT

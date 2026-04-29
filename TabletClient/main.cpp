@@ -129,6 +129,9 @@ int main(void) {
     lv_display_set_flush_cb(disp, RadxaEPD::flush_cb);
     lv_display_set_buffers(disp, buf1, NULL, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_PARTIAL);
 
+    // Rotate the UI 90° so portrait layout maps to the landscape panel
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+
     create_status_bar();
 
     // Delegate UI creation to the cross-platform App

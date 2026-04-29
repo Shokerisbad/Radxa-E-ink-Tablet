@@ -628,6 +628,10 @@ void build_tablet_ui() {
   lv_textarea_set_one_line(ai_input_ta, true);
   lv_obj_set_flex_grow(ai_input_ta, 1);
   lv_textarea_set_placeholder_text(ai_input_ta, "Ask for book recommendations...");
+  
+  // Disable blinking cursor to prevent infinite e-ink refresh loops!
+  lv_obj_set_style_anim_duration(ai_input_ta, 0, LV_PART_CURSOR);
+  lv_obj_set_style_opa(ai_input_ta, 0, LV_PART_CURSOR);
 
   lv_obj_t *ai_send_btn = lv_btn_create(ai_input_bar);
   lv_obj_set_size(ai_send_btn, 110, 40);

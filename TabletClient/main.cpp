@@ -123,12 +123,13 @@ int main(void) {
 
     // 3. Register Display Driver in LVGL (v9 API)
     // Full render mode: LVGL renders the entire frame, then calls flush_cb once.
-    // This is ideal for e-ink: no partial screen flashes, and enables software rotation.
+    // Software rotation in FULL mode REQUIRES two buffers!
     static uint8_t * buf1 = (uint8_t *)malloc(DISP_BUF_SIZE * sizeof(lv_color32_t));
+    static uint8_t * buf2 = (uint8_t *)malloc(DISP_BUF_SIZE * sizeof(lv_color32_t));
     
     lv_display_t * disp = lv_display_create(DISP_HOR_RES, DISP_VER_RES);
     lv_display_set_flush_cb(disp, RadxaEPD::flush_cb);
-    lv_display_set_buffers(disp, buf1, NULL, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_FULL);
+    lv_display_set_buffers(disp, buf1, buf2, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_FULL);
 
     // Rotate the UI 90° so portrait layout maps to the landscape panel
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);

@@ -153,82 +153,60 @@ bool RadxaEPD::init() {
   hardware_reset();
   wait_until_idle();
 
-  // === GDEY075T7 (UC8179) Initialization — from GxEPD2 reference ===
+  std::cout << "Initializing GDEY075T7 (Matching Python Script)..." << std::endl;
 
-  // PANEL_SETTING (0x00)
-  // 0x1F = KW mode (B/W), full update LUT from OTP
-  send_command(0x00);
-  send_data(0x1F);
-
-  // POWER_SETTING (0x01) — 5 bytes required!
+  // Power Setting - Do this FIRST
   send_command(0x01);
-  send_data(0x07); // Enable internal DC-DC
-  send_data(0x07); // VGH=20V, VGL=-20V
+  send_data(0x07); // Internal DC/DC
+  send_data(0x07);
   send_data(0x3F); // VDH=15V
   send_data(0x3F); // VDL=-15V
-  send_data(0x09); // VDHR=4.2V (was missing!)
 
-  // Booster Soft Start (0x06) — critical for stable power ramp
+  // Panel Setting
+  send_command(0x00);
+  send_data(0x8F);
+
+  // Power On Sequence
+  send_command(0x03);
+  send_data(0x00);
+
+  // Power On
+  send_command(0x04);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  wait_until_idle();
+
+  // Booster Soft Start (3 bytes only!)
   send_command(0x06);
   send_data(0x17);
   send_data(0x17);
-  send_data(0x28);
-  send_data(0x17);
+  send_data(0x27);
 
-  // POWER ON (0x04)
-  send_command(0x04);
-  wait_until_idle(); // Must wait for BUSY, not just sleep!
+  // PLL Control - 50Hz
+  send_command(0x30);
+  send_data(0x06);
 
-  // RESOLUTION_SETTING (0x61) — 800x480
+  // Resolution Setting
   send_command(0x61);
-  send_data(0x03); // 800 / 256 = 3
-  send_data(0x20); // 800 % 256 = 32 = 0x20
-  send_data(0x01); // 480 / 256 = 1
-  send_data(0xE0); // 480 % 256 = 224 = 0xE0
+  send_data(0x03);
+  send_data(0x20);
+  send_data(0x01);
+  send_data(0xE0);
 
-  // DUSPI (0x15) — Disable dual SPI
-  send_command(0x15);
+  // Gate/Source Start Setting
+  send_command(0x65);
+  send_data(0x00);
   send_data(0x00);
 
-  // VCOM AND DATA INTERVAL SETTING (0x50)
+  // VCOM and Data Interval Setting
   send_command(0x50);
-  send_data(0x29); // LUTKW, N2OCP: copy new to old
-  send_data(0x07); // CDI default
+  send_data(0x10);
+  send_data(0x07);
 
-  // TCON SETTING (0x60)
+  // TCON Setting
   send_command(0x60);
   send_data(0x22);
 
-  // PWS (0xE3)
-  send_command(0xE3);
-  send_data(0x22);
-
-  // === Initial Clear: Write BOTH frame buffers to white ===
-  // The UC8179 compares OLD (0x10) vs NEW (0x13) buffers to calculate
-  // the e-ink waveform. If OLD has stale data from a previous run,
-  // the display will invert or show garbage.
-  const size_t frame_bytes = 800 * 480 / 8; // 48000 bytes
-  std::vector<uint8_t> white_buf(frame_bytes, 0xFF);
-
-  // Write OLD buffer (previous image) to white
-  send_command(0x10);
-  send_data_array(white_buf.data(), frame_bytes);
-
-  // Write NEW buffer (current image) to white
-  send_command(0x13);
-  send_data_array(white_buf.data(), frame_bytes);
-
-  // Temperature sensor for OTP LUT waveform
-  send_command(0xE0);
-  send_data(0x00);
-  send_command(0x41);
-  send_data(0x00);
-
-  // Full refresh to clear the panel
-  send_command(0x12);
-  wait_until_idle();
-
-  std::cout << "GDEY075T7 EPD initialized and cleared." << std::endl;
+  std::cout << "GDEY075T7 Initialization complete!" << std::endl;
   return true;
 }
 
@@ -304,17 +282,16 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
 
   if (is_full) {
     // --- Full Refresh ---
-    // Write new image data to command 0x13 (NEW data)
+    // Python script logic: send all white (0xFF) to OLD buffer (DTM1)
+    std::vector<uint8_t> old_buf(num_bytes, 0xFF);
+    g_epd_instance->send_command(0x10);
+    g_epd_instance->send_data_array(old_buf.data(), num_bytes);
+
+    // Send new image data to NEW buffer (DTM2)
     g_epd_instance->send_command(0x13);
     g_epd_instance->send_data_array(bw_buffer.data(), num_bytes);
 
-    // Temperature sensor setup (use internal sensor for OTP LUT waveform)
-    g_epd_instance->send_command(0xE0); // Cascade Setting
-    g_epd_instance->send_data(0x00);    // no TSFIX
-    g_epd_instance->send_command(0x41); // TSE
-    g_epd_instance->send_data(0x00);    // internal sensor
-
-    // Display Refresh
+    // Display Refresh (DRF)
     g_epd_instance->send_command(0x12);
     g_epd_instance->wait_until_idle();
   } else {

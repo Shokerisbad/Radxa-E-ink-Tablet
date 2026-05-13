@@ -26,6 +26,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglPla
 set(SOURCES
     main.cpp
     RadxaEPD.cpp
+    RadxaTouch.cpp
     src/App.cpp
     lv_port_pc_visual_studio/LvglWindowsSimulator/epubHandler.cpp
     lv_port_pc_visual_studio/LvglWindowsSimulator/pdfHandler.cpp

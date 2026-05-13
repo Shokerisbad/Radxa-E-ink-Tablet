@@ -6,11 +6,17 @@
 
 #include "lvgl/lvgl.h"
 #include "RadxaEPD.h"
+#include "RadxaTouch.h"
 #include "src/App.h"
 
 // Define display resolution
-#define DISP_HOR_RES 800
-#define DISP_VER_RES 480
+// Logical resolution (portrait — how LVGL sees the screen)
+#define DISP_HOR_RES 480
+#define DISP_VER_RES 800
+
+// Physical resolution (landscape — how the EPD panel is wired)
+#define PHYS_WIDTH 800
+#define PHYS_HEIGHT 480
 
 // Draw buffer size (1/10 screen size is a good default for LVGL, but for EPD we often use full screen buffer or partial)
 // Since EPD requires full frame for SPI transfer, we'll allocate a full screen buffer.
@@ -38,7 +44,7 @@ static uint32_t custom_tick_get(void) {
 // System Status Bar - Example UI Setup
 void create_status_bar() {
     lv_obj_t * status_bar = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(status_bar, DISP_HOR_RES, 30);
+    lv_obj_set_size(status_bar, DISP_HOR_RES, 30); // Uses logical width (480)
     lv_obj_align(status_bar, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_radius(status_bar, 0, 0);
     lv_obj_set_style_bg_color(status_bar, lv_color_white(), 0);
@@ -122,22 +128,30 @@ int main(void) {
     }
 
     // 3. Register Display Driver in LVGL (v9 API)
-    // Full render mode: LVGL renders the entire frame, then calls flush_cb once.
-    // Software rotation in FULL mode REQUIRES two buffers!
+    // LVGL sees a 480x800 portrait display. We rotate the pixels in flush_cb.
     static uint8_t * buf1 = (uint8_t *)malloc(DISP_BUF_SIZE * sizeof(lv_color32_t));
-    static uint8_t * buf2 = (uint8_t *)malloc(DISP_BUF_SIZE * sizeof(lv_color32_t));
     
     lv_display_t * disp = lv_display_create(DISP_HOR_RES, DISP_VER_RES);
     lv_display_set_flush_cb(disp, RadxaEPD::flush_cb);
-    lv_display_set_buffers(disp, buf1, buf2, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_FULL);
+    lv_display_set_buffers(disp, buf1, NULL, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_FULL);
 
-    // Rotate the UI 90° so portrait layout maps to the landscape panel
-    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+    // No LVGL rotation — we handle it in flush_cb to avoid dimension mismatches
 
     create_status_bar();
 
     // Delegate UI creation to the cross-platform App
     build_tablet_ui();
+
+    // 4. Initialize Hardware Touch Driver
+    RadxaTouch touch;
+    if (touch.init()) {
+        lv_indev_t * indev = lv_indev_create();
+        lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+        lv_indev_set_read_cb(indev, RadxaTouch::read_cb);
+        std::cout << "Touch driver registered with LVGL." << std::endl;
+    } else {
+        std::cerr << "Warning: Touch driver failed to initialize. Continuing without touch." << std::endl;
+    }
 
     // 5. Main LVGL Loop
     std::cout << "Entering LVGL Main Loop...\n";
@@ -151,5 +165,6 @@ int main(void) {
 
     // Cleanup
     free(buf1);
+    // buf2 removed — single buffer is sufficient with manual rotation
     return 0;
 }

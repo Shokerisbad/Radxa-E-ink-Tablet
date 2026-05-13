@@ -24,8 +24,8 @@
 // Names from `sudo gpioinfo` output — kernel uses "PIN_XX" format
 #define PIN_CS_NAME "PIN_24"
 #define PIN_DC_NAME "PIN_22"
-#define PIN_RST_NAME "PIN_18"
-#define PIN_BUSY_NAME "PIN_21"
+#define PIN_RST_NAME "PIN_11"
+#define PIN_BUSY_NAME "PIN_18"
 
 RadxaEPD *g_epd_instance = nullptr;
 
@@ -230,96 +230,78 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     return;
   }
 
-  int x1 = area->x1;
-  int y1 = area->y1;
-  int x2 = area->x2;
-  int y2 = area->y2;
-  int w = x2 - x1 + 1;
-  int h = y2 - y1 + 1;
+  // LVGL renders in portrait (480x800). We must rotate 90° to physical (800x480).
+  // In FULL render mode, area should always be the full logical screen.
+  const int log_w = 480;  // LVGL logical width
+  const int log_h = 800;  // LVGL logical height
+  const int phys_w = 800; // EPD physical width
+  const int phys_h = 480; // EPD physical height
+  const size_t frame_bytes = (phys_w * phys_h) / 8; // 48000 bytes
 
-  // Convert LVGL color buffer to 1-bit monochrome packed buffer
-  // EPD expects: 1 = white, 0 = black, MSB first, 8 pixels per byte
-  size_t num_bytes = (w * h + 7) / 8;
-  std::vector<uint8_t> bw_buffer(num_bytes, 0xFF); // default white
+  // Step 1: Build the physical 800x480 1-bit buffer by rotating the LVGL pixels.
+  // Rotation: logical (lx, ly) -> physical (phys_w - 1 - ly, lx)
+  //   i.e. rotate 90° clockwise
+  std::vector<uint8_t> phys_buffer(frame_bytes, 0xFF); // default white
 
 #if LV_COLOR_DEPTH == 32
   lv_color32_t *buf32 = (lv_color32_t *)px_map;
-  for (int y = 0; y < h; y++) {
-    for (int x = 0; x < w; x++) {
-      int idx = y * w + x;
+  for (int ly = 0; ly < log_h; ly++) {
+    for (int lx = 0; lx < log_w; lx++) {
+      int src_idx = ly * log_w + lx;
       uint8_t brightness =
-          (buf32[idx].red + buf32[idx].green + buf32[idx].blue) / 3;
+          (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
       if (brightness < 128) {
-        int byte_idx = idx / 8;
-        int bit_idx = 7 - (idx % 8);
-        bw_buffer[byte_idx] &= ~(1 << bit_idx);
+        // Map logical portrait -> physical landscape (90° CW rotation)
+        int px = log_h - 1 - ly;
+        int py = lx;
+        int phys_idx = py * phys_w + px;
+        int byte_idx = phys_idx / 8;
+        int bit_idx = 7 - (phys_idx % 8);
+        phys_buffer[byte_idx] &= ~(1 << bit_idx);
       }
     }
   }
 #elif LV_COLOR_DEPTH == 16
   uint16_t *buf16 = (uint16_t *)px_map;
-  for (int y = 0; y < h; y++) {
-    for (int x = 0; x < w; x++) {
-      int idx = y * w + x;
-      // RGB565: extract approximate brightness
-      uint8_t r = (buf16[idx] >> 11) & 0x1F;
-      uint8_t g = (buf16[idx] >> 5) & 0x3F;
-      uint8_t b = buf16[idx] & 0x1F;
+  for (int ly = 0; ly < log_h; ly++) {
+    for (int lx = 0; lx < log_w; lx++) {
+      int src_idx = ly * log_w + lx;
+      uint8_t r = (buf16[src_idx] >> 11) & 0x1F;
+      uint8_t g = (buf16[src_idx] >> 5) & 0x3F;
+      uint8_t b = buf16[src_idx] & 0x1F;
       uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
       if (brightness < 128) {
-        int byte_idx = idx / 8;
-        int bit_idx = 7 - (idx % 8);
-        bw_buffer[byte_idx] &= ~(1 << bit_idx);
+        int px = log_h - 1 - ly;
+        int py = lx;
+        int phys_idx = py * phys_w + px;
+        int byte_idx = phys_idx / 8;
+        int bit_idx = 7 - (phys_idx % 8);
+        phys_buffer[byte_idx] &= ~(1 << bit_idx);
       }
     }
   }
 #else
-  // LV_COLOR_DEPTH 8 or 1:
-  memcpy(bw_buffer.data(), px_map, num_bytes);
+  // For 1-bit depth, we'd need a bit-level rotation; skip for now
+  memcpy(phys_buffer.data(), px_map, frame_bytes);
 #endif
 
-  bool is_full = (x1 == 0 && y1 == 0 && w == 800 && h == 480);
+  std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
 
-  if (is_full) {
-    // --- Full Refresh ---
-    // Python script logic: send all white (0xFF) to OLD buffer (DTM1)
-    std::vector<uint8_t> old_buf(num_bytes, 0xFF);
-    g_epd_instance->send_command(0x10);
-    g_epd_instance->send_data_array(old_buf.data(), num_bytes);
+  // Step 2: Send to EPD — always full frame
+  // Write white to OLD buffer (0x10)
+  std::vector<uint8_t> old_buf(frame_bytes, 0xFF);
+  g_epd_instance->send_command(0x10);
+  g_epd_instance->send_data_array(old_buf.data(), frame_bytes);
 
-    // Send new image data to NEW buffer (DTM2)
-    g_epd_instance->send_command(0x13);
-    g_epd_instance->send_data_array(bw_buffer.data(), num_bytes);
+  // Write rotated image to NEW buffer (0x13)
+  g_epd_instance->send_command(0x13);
+  g_epd_instance->send_data_array(phys_buffer.data(), frame_bytes);
 
-    // Display Refresh (DRF)
-    g_epd_instance->send_command(0x12);
-    g_epd_instance->wait_until_idle();
-  } else {
-    // --- Partial Refresh ---
-    // Align x to byte boundary (required by UC8179)
-    int x1_aligned = x1 & 0xFFF8;
-    int x2_aligned = x2 | 0x0007;
+  // Display Refresh
+  g_epd_instance->send_command(0x12);
+  g_epd_instance->wait_until_idle();
 
-    g_epd_instance->send_command(0x91); // PARTIAL_IN
-    g_epd_instance->send_command(0x90); // PARTIAL_WINDOW
-    g_epd_instance->send_data(x1_aligned / 256);
-    g_epd_instance->send_data(x1_aligned % 256);
-    g_epd_instance->send_data(x2_aligned / 256);
-    g_epd_instance->send_data(x2_aligned % 256);
-    g_epd_instance->send_data(y1 / 256);
-    g_epd_instance->send_data(y1 % 256);
-    g_epd_instance->send_data(y2 / 256);
-    g_epd_instance->send_data(y2 % 256);
-    g_epd_instance->send_data(0x01);
-
-    g_epd_instance->send_command(0x13); // NEW data
-    g_epd_instance->send_data_array(bw_buffer.data(), num_bytes);
-
-    g_epd_instance->send_command(0x12); // DISPLAY_REFRESH
-    g_epd_instance->wait_until_idle();
-
-    g_epd_instance->send_command(0x92); // PARTIAL_OUT
-  }
+  std::cout << "Display updated!" << std::endl;
 
   lv_display_flush_ready(disp);
 }

@@ -150,40 +150,38 @@ bool RadxaEPD::init() {
   if (!init_spi())
     return false;
 
+  std::cout << "Initializing GDEY075T7 (Matching Latest Python Script)..." << std::endl;
+
   hardware_reset();
-  wait_until_idle();
-
-  std::cout << "Initializing GDEY075T7 (Matching Python Script)..." << std::endl;
-
-  // Power Setting - Do this FIRST
-  send_command(0x01);
-  send_data(0x07); // Internal DC/DC
-  send_data(0x07);
-  send_data(0x3F); // VDH=15V
-  send_data(0x3F); // VDL=-15V
 
   // Panel Setting
   send_command(0x00);
-  send_data(0x8F);
+  send_data(0x1F);
 
-  // Power On Sequence
-  send_command(0x03);
-  send_data(0x00);
+  // VCOM and Data Interval Setting (before Power On)
+  send_command(0x50);
+  send_data(0x10);
+  send_data(0x07);
 
   // Power On
   send_command(0x04);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   wait_until_idle();
 
-  // Booster Soft Start (3 bytes only!)
+  // Booster Soft Start (4 bytes!)
   send_command(0x06);
-  send_data(0x17);
-  send_data(0x17);
   send_data(0x27);
+  send_data(0x27);
+  send_data(0x18);
+  send_data(0x17);
 
-  // PLL Control - 50Hz
-  send_command(0x30);
-  send_data(0x06);
+  // Cascade Setting
+  send_command(0xE0);
+  send_data(0x02);
+
+  // Force Temperature
+  send_command(0xE5);
+  send_data(0x5A);
 
   // Resolution Setting
   send_command(0x61);
@@ -191,20 +189,6 @@ bool RadxaEPD::init() {
   send_data(0x20);
   send_data(0x01);
   send_data(0xE0);
-
-  // Gate/Source Start Setting
-  send_command(0x65);
-  send_data(0x00);
-  send_data(0x00);
-
-  // VCOM and Data Interval Setting
-  send_command(0x50);
-  send_data(0x10);
-  send_data(0x07);
-
-  // TCON Setting
-  send_command(0x60);
-  send_data(0x22);
 
   std::cout << "GDEY075T7 Initialization complete!" << std::endl;
   return true;
@@ -241,7 +225,8 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   // Step 1: Build the physical 800x480 1-bit buffer by rotating the LVGL pixels.
   // Rotation: logical (lx, ly) -> physical (phys_w - 1 - ly, lx)
   //   i.e. rotate 90° clockwise
-  std::vector<uint8_t> phys_buffer(frame_bytes, 0xFF); // default white
+  // With Panel Setting 0x1F: 0x00 = white, bit=1 = black (matching Python script)
+  std::vector<uint8_t> phys_buffer(frame_bytes, 0x00); // default white
 
 #if LV_COLOR_DEPTH == 32
   lv_color32_t *buf32 = (lv_color32_t *)px_map;
@@ -257,7 +242,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int phys_idx = py * phys_w + px;
         int byte_idx = phys_idx / 8;
         int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] &= ~(1 << bit_idx);
+        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
       }
     }
   }
@@ -276,7 +261,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int phys_idx = py * phys_w + px;
         int byte_idx = phys_idx / 8;
         int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] &= ~(1 << bit_idx);
+        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
       }
     }
   }
@@ -288,8 +273,8 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
 
   // Step 2: Send to EPD — always full frame
-  // Write white to OLD buffer (0x10)
-  std::vector<uint8_t> old_buf(frame_bytes, 0xFF);
+  // Write white (0x00) to OLD buffer (0x10) — matching Python display_image()
+  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
   g_epd_instance->send_command(0x10);
   g_epd_instance->send_data_array(old_buf.data(), frame_bytes);
 

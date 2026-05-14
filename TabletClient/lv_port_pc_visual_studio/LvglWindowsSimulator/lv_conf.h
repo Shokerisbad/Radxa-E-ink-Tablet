@@ -1366,6 +1366,3 @@
 #endif /*LV_CONF_H*/
 
 #endif /*End of "Content enable"*/
-
- 
- 

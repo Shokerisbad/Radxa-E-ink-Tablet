@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include "lvgl/lvgl.h"
+#include <chrono>
 
 // GPIO Configuration (Physical Pin Numbers)
 #define TOUCH_PIN_RST "PIN_37"
@@ -22,6 +23,8 @@ public:
     // The callback LVGL uses to poll for touch data
     static void read_cb(lv_indev_t * indev, lv_indev_data_t * data);
 
+    void ignore_touches_for(int ms);
+
 private:
     bool init_gpio();
     bool init_i2c();
@@ -40,4 +43,7 @@ private:
     int last_x;
     int last_y;
     bool is_pressed;
+    std::chrono::steady_clock::time_point ignore_until;
 };
+
+extern RadxaTouch *g_touch_instance;

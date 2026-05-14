@@ -13,6 +13,7 @@
 RadxaTouch *g_touch_instance = nullptr;
 
 RadxaTouch::RadxaTouch() : i2c_fd(-1), i2c_addr(GT911_I2C_ADDR_28), line_rst(nullptr), line_int(nullptr), last_x(0), last_y(0), is_pressed(false) {
+    ignore_until = std::chrono::steady_clock::now();
     g_touch_instance = this;
 }
 
@@ -148,6 +149,14 @@ bool RadxaTouch::init() {
 void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
     if (!g_touch_instance) return;
 
+    // Check if we are in a cooling-off period (e.g. during/after an E-ink refresh)
+    if (std::chrono::steady_clock::now() < g_touch_instance->ignore_until) {
+        g_touch_instance->write_reg(0x814E, 0x00); // Clear buffer so it doesn't pile up
+        g_touch_instance->is_pressed = false;
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
+    }
+
     uint8_t status = 0;
     g_touch_instance->read_reg(0x814E, &status, 1);
 
@@ -165,23 +174,20 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
             uint8_t point_data[8] = {0}; // Initialize to zero to prevent stack garbage
             if (g_touch_instance->read_reg(0x8150, point_data, 8)) {
                 // Offset by 1 to skip Track ID
-                int raw_x = point_data[1] | (point_data[2] << 8);
-                int raw_y = point_data[3] | (point_data[4] << 8);
+                // The GT911 on this specific EPD hat has a highly scrambled byte order.
+                // Calibration from the 4-corner test reveals:
+                // point_data[1] = X LSB
+                // point_data[4] = X MSB
+                // point_data[3] = Y LSB
+                // point_data[2] = Y MSB
+                int x_actual = point_data[1] | (point_data[4] << 8);
+                int y_actual = point_data[3] | (point_data[2] << 8);
 
-                // GT911 on this panel appears to be sending MSB first (e.g., 65025 instead of 510)
-                // If coordinates are insanely large, swap the bytes:
-                if (raw_x > 4000 || raw_y > 4000) {
-                    raw_x = (point_data[1] << 8) | point_data[2];
-                    raw_y = (point_data[3] << 8) | point_data[4];
-                }
-
-                // --- Coordinate Mapping ---
-                // Physical touch panel: 800x480 (Landscape)
-                // LVGL Logical screen: 480x800 (Portrait)
-                // EPD flush_cb rotates: logical(lx,ly) -> physical(799-ly, lx)
-                // Reverse for touch: log_x = phys_y, log_y = 799 - phys_x
-                int log_x = raw_y;
-                int log_y = 799 - raw_x;
+                // The raw hardware grid is exactly 480x800.
+                // X=0 is Left, X=479 is Right.
+                // Y=0 is Bottom, Y=799 is Top.
+                int log_x = x_actual;
+                int log_y = 799 - y_actual;
 
                 // Clamp to prevent LVGL warnings if touching the absolute edges
                 if (log_x < 0) log_x = 0;
@@ -193,8 +199,8 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
                 g_touch_instance->last_y = log_y;
                 g_touch_instance->is_pressed = true;
 
-                std::cout << "Touch detected: Physical(" << raw_x << ", " << raw_y 
-                          << ") -> Logical(" << log_x << ", " << log_y << ")" << std::endl;
+                std::cout << "Touch mapped: Hardware(" << x_actual << ", " << y_actual 
+                          << ") -> LVGL(" << log_x << ", " << log_y << ")" << std::endl;
             }
         } else {
             g_touch_instance->is_pressed = false;
@@ -211,4 +217,8 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
     data->point.x = g_touch_instance->last_x;
     data->point.y = g_touch_instance->last_y;
     data->state = g_touch_instance->is_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+void RadxaTouch::ignore_touches_for(int ms) {
+    ignore_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
 }

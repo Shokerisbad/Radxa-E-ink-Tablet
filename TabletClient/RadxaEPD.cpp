@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 #include <thread>
 #include <unistd.h>
+#include "RadxaTouch.h"
 
 // LVGL includes (adjust path as needed depending on your include setup)
 #include "lvgl/lvgl.h"
@@ -291,6 +292,14 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   g_epd_instance->send_command(0x12);
   std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Mandatory delay before polling BUSY
   g_epd_instance->wait_until_idle();
+
+  // EPD refreshes generate massive electrical noise which the I2C GT911 touch panel 
+  // picks up as phantom touches. This causes LVGL to think the user is scrolling,
+  // triggering another infinite refresh loop.
+  // We mute the touch controller for 500ms after a refresh completes to prevent this.
+  if (g_touch_instance) {
+      g_touch_instance->ignore_touches_for(500);
+  }
 
   std::cout << "Display updated!" << std::endl;
 

@@ -1366,3 +1366,7 @@
 #endif /*LV_CONF_H*/
 
 #endif /*End of "Content enable"*/
+# d e f i n e   L V _ U S E _ S Y S M O N   0  
+ # d e f i n e   L V _ U S E _ P E R F _ M O N I T O R   0  
+ # d e f i n e   L V _ U S E _ M E M _ M O N I T O R   0  
+ 

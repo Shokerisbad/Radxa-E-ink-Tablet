@@ -50,12 +50,9 @@ void RadxaTouch::reset_controller() {
 }
 
 bool RadxaTouch::init_i2c() {
-    // Try multiple I2C device paths
+    // Only try /dev/i2c-5 because that corresponds to physical pins 31 (SDA) and 33 (SCL)
     const char* i2c_paths[] = {
-        TOUCH_I2C_DEVICE,
-        "/dev/i2c-0", "/dev/i2c-1", "/dev/i2c-2",
-        "/dev/i2c-3", "/dev/i2c-4", "/dev/i2c-5",
-        "/dev/i2c-6", "/dev/i2c-7", nullptr
+        "/dev/i2c-5", nullptr
     };
 
     for (int i = 0; i2c_paths[i] != nullptr; i++) {
@@ -180,7 +177,7 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
             //   Byte 3: Y Low
             //   Byte 4: Y High
             //   Byte 5-7: Size + reserved
-            uint8_t point_data[8];
+            uint8_t point_data[8] = {0}; // Initialize to zero to prevent stack garbage
             if (g_touch_instance->read_reg(0x8150, point_data, 8)) {
                 // Offset by 1 to skip Track ID (matching Python: data[i*8+1])
                 int phys_x = point_data[1] | (point_data[2] << 8);

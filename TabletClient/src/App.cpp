@@ -902,6 +902,9 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
       lvgl_mutex.unlock();
     }
   }).detach();
+
+  // IMPORTANT: Actually load the main screen we just built!
+  lv_screen_load(screen_main);
 }
 
 // --- END E-INK APP UI PLUMBING ---

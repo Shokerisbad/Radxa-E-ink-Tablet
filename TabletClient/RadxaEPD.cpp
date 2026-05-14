@@ -16,7 +16,7 @@
 
 // Hardware configuration
 #define SPI_DEVICE "/dev/spidev3.0"
-#define SPI_SPEED 500000
+#define SPI_SPEED 2000000
 #define SPI_MODE SPI_MODE_0
 #define SPI_BITS 8
 
@@ -86,7 +86,7 @@ bool RadxaEPD::init_spi() {
     return false;
   }
 
-  uint8_t mode = SPI_MODE | SPI_NO_CS; // Manual GPIO CS — prevent kernel from toggling its own CS
+  uint8_t mode = SPI_MODE;
   uint8_t bits = SPI_BITS;
   uint32_t speed = SPI_SPEED;
 
@@ -102,28 +102,28 @@ bool RadxaEPD::init_spi() {
 
 void RadxaEPD::hardware_reset() {
   gpiod_line_set_value(line_rst, 0);
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
   gpiod_line_set_value(line_rst, 1);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
 void RadxaEPD::send_command(uint8_t cmd) {
-  gpiod_line_set_value(line_cs, 0);  // CS low FIRST
-  gpiod_line_set_value(line_dc, 0);  // DC low = command
+  gpiod_line_set_value(line_dc, 0);
+  gpiod_line_set_value(line_cs, 0);
   write(spi_fd, &cmd, 1);
   gpiod_line_set_value(line_cs, 1);
 }
 
 void RadxaEPD::send_data(uint8_t data) {
-  gpiod_line_set_value(line_cs, 0);  // CS low FIRST
-  gpiod_line_set_value(line_dc, 1);  // DC high = data
+  gpiod_line_set_value(line_dc, 1);
+  gpiod_line_set_value(line_cs, 0);
   write(spi_fd, &data, 1);
   gpiod_line_set_value(line_cs, 1);
 }
 
 void RadxaEPD::send_data_array(const uint8_t *data, size_t len) {
-  gpiod_line_set_value(line_cs, 0);  // CS low FIRST
-  gpiod_line_set_value(line_dc, 1);  // DC high = data
+  gpiod_line_set_value(line_dc, 1);
+  gpiod_line_set_value(line_cs, 0);
 
   // SPI transfers might have a max length limit depending on the OS (e.g. 4096
   // bytes). We should loop through the data in chunks if needed.
@@ -152,7 +152,6 @@ bool RadxaEPD::init() {
             << std::endl;
 
   hardware_reset();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Post-reset stabilization
 
   // Panel Setting
   send_command(0x00);

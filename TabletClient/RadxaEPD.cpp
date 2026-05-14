@@ -110,22 +110,22 @@ void RadxaEPD::hardware_reset() {
 }
 
 void RadxaEPD::send_command(uint8_t cmd) {
-  gpiod_line_set_value(line_dc, 0);
-  gpiod_line_set_value(line_cs, 0);
+  gpiod_line_set_value(line_cs, 0);  // CS low FIRST
+  gpiod_line_set_value(line_dc, 0);  // DC low = command
   write(spi_fd, &cmd, 1);
   gpiod_line_set_value(line_cs, 1);
 }
 
 void RadxaEPD::send_data(uint8_t data) {
-  gpiod_line_set_value(line_dc, 1);
-  gpiod_line_set_value(line_cs, 0);
+  gpiod_line_set_value(line_cs, 0);  // CS low FIRST
+  gpiod_line_set_value(line_dc, 1);  // DC high = data
   write(spi_fd, &data, 1);
   gpiod_line_set_value(line_cs, 1);
 }
 
 void RadxaEPD::send_data_array(const uint8_t *data, size_t len) {
-  gpiod_line_set_value(line_dc, 1);
-  gpiod_line_set_value(line_cs, 0);
+  gpiod_line_set_value(line_cs, 0);  // CS low FIRST
+  gpiod_line_set_value(line_dc, 1);  // DC high = data
 
   // SPI transfers might have a max length limit depending on the OS (e.g. 4096
   // bytes). We should loop through the data in chunks if needed.
@@ -150,9 +150,11 @@ bool RadxaEPD::init() {
   if (!init_spi())
     return false;
 
-  std::cout << "Initializing GDEY075T7 (Matching Latest Python Script)..." << std::endl;
+  std::cout << "Initializing GDEY075T7 (Matching Latest Python Script)..."
+            << std::endl;
 
   hardware_reset();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Post-reset stabilization
 
   // Panel Setting
   send_command(0x00);
@@ -195,11 +197,16 @@ bool RadxaEPD::init() {
 }
 
 void RadxaEPD::sleep() {
+  // Set VCOM border waveform to safe state before power-down
+  send_command(0x50); // VCOM AND DATA INTERVAL SETTING
+  send_data(0xF7);    // WBRmode safe value for sleep
+
   send_command(0x02); // POWER OFF
   wait_until_idle();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
   send_command(0x07); // DEEP_SLEEP
   send_data(0xA5);    // Data check code
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void RadxaEPD::wake() {
@@ -214,19 +221,19 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     return;
   }
 
-  // LVGL renders in portrait (480x800). We must rotate 90° to physical (800x480).
-  // In FULL render mode, area should always be the full logical screen.
-  const int log_w = 480;  // LVGL logical width
-  const int log_h = 800;  // LVGL logical height
-  const int phys_w = 800; // EPD physical width
-  const int phys_h = 480; // EPD physical height
+  // LVGL renders in portrait (480x800). We must rotate 90° to physical
+  // (800x480). In FULL render mode, area should always be the full logical
+  // screen.
+  const int log_w = 480;                            // LVGL logical width
+  const int log_h = 800;                            // LVGL logical height
+  const int phys_w = 800;                           // EPD physical width
+  const int phys_h = 480;                           // EPD physical height
   const size_t frame_bytes = (phys_w * phys_h) / 8; // 48000 bytes
 
-  // Step 1: Build the physical 800x480 1-bit buffer by rotating the LVGL pixels.
-  // Rotation: logical (lx, ly) -> physical (phys_w - 1 - ly, lx)
+  // Step 1: Build the physical 800x480 1-bit buffer by rotating the LVGL
+  // pixels. Rotation: logical (lx, ly) -> physical (phys_w - 1 - ly, lx)
   //   i.e. rotate 90° clockwise
-  // With Panel Setting 0x1F: 0x00 = white, bit=1 = black (matching Python script)
-  std::vector<uint8_t> phys_buffer(frame_bytes, 0x00); // default white
+  std::vector<uint8_t> phys_buffer(frame_bytes, 0xFF); // default white
 
 #if LV_COLOR_DEPTH == 32
   lv_color32_t *buf32 = (lv_color32_t *)px_map;
@@ -242,7 +249,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int phys_idx = py * phys_w + px;
         int byte_idx = phys_idx / 8;
         int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+        phys_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
       }
     }
   }
@@ -261,7 +268,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int phys_idx = py * phys_w + px;
         int byte_idx = phys_idx / 8;
         int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+        phys_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
       }
     }
   }
@@ -273,8 +280,8 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
 
   // Step 2: Send to EPD — always full frame
-  // Write white (0x00) to OLD buffer (0x10) — matching Python display_image()
-  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
+  // Write white (0xFF) to OLD buffer (0x10)
+  std::vector<uint8_t> old_buf(frame_bytes, 0xFF);
   g_epd_instance->send_command(0x10);
   g_epd_instance->send_data_array(old_buf.data(), frame_bytes);
 
@@ -284,6 +291,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
 
   // Display Refresh
   g_epd_instance->send_command(0x12);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Mandatory delay before polling BUSY
   g_epd_instance->wait_until_idle();
 
   std::cout << "Display updated!" << std::endl;

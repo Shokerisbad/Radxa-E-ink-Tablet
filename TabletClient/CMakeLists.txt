@@ -22,6 +22,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglWin
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglPlatform)
 
+# --- ADDED: Find ZLIB to fix the libzip linking error ---
+find_package(ZLIB REQUIRED)
+# --------------------------------------------------------
+
 # Our source files for the Linux/Radxa build
 set(SOURCES
     main.cpp
@@ -37,7 +41,24 @@ add_executable(TabletClient ${SOURCES})
 # Link libraries
 # gpiod for GPIO control
 # pthread for threading (used by standard library threads)
-target_link_libraries(TabletClient PRIVATE gpiod pthread zip mupdf)
+# --- ADDED: MuPDF missing dependencies ---
+target_link_libraries(TabletClient PRIVATE
+    gpiod
+    pthread
+    zip
+    # MuPDF and its massive web of dependencies:
+    mupdf
+    mupdf-third
+    freetype
+    harfbuzz
+    jpeg
+    openjp2
+    jbig2dec
+    gumbo
+    mujs
+    m           # Standard math library
+    z           # Standard zlib library (Moved to the absolute bottom)
+)
 
 if(TARGET lvgl)
     target_link_libraries(TabletClient PRIVATE lvgl)

@@ -49,57 +49,41 @@ void RadxaTouch::reset_controller() {
 }
 
 bool RadxaTouch::init_i2c() {
-    // Scan all available I2C buses to find the GT911 (Blinka auto-detects in Python)
-    const char* i2c_paths[] = {
-        "/dev/i2c-0", "/dev/i2c-1", "/dev/i2c-2", "/dev/i2c-3",
-        "/dev/i2c-4", "/dev/i2c-5", "/dev/i2c-6", "/dev/i2c-7",
-        nullptr
-    };
-
-    for (int i = 0; i2c_paths[i] != nullptr; i++) {
-        int fd = open(i2c_paths[i], O_RDWR);
-        if (fd < 0) continue;
-
-        // Try to communicate with the GT911 at 0x14
-        uint8_t reg_buf[2] = {0x81, 0x40}; // Product ID register
-        uint8_t pid[4] = {0};
-
-        struct i2c_msg msgs[2];
-        msgs[0].addr = GT911_I2C_ADDR_28;
-        msgs[0].flags = 0;
-        msgs[0].len = 2;
-        msgs[0].buf = reg_buf;
-        msgs[1].addr = GT911_I2C_ADDR_28;
-        msgs[1].flags = I2C_M_RD;
-        msgs[1].len = 4;
-        msgs[1].buf = pid;
-
-        struct i2c_rdwr_ioctl_data ioctl_data;
-        ioctl_data.msgs = msgs;
-        ioctl_data.nmsgs = 2;
-
-        if (ioctl(fd, I2C_RDWR, &ioctl_data) >= 0) {
-            std::cout << "GT911 found at address 0x14 on " << i2c_paths[i] << std::endl;
-            i2c_fd = fd;
-            i2c_addr = GT911_I2C_ADDR_28;
-            return true;
-        }
-
-        // Try 0x5D
-        msgs[0].addr = GT911_I2C_ADDR_BA;
-        msgs[1].addr = GT911_I2C_ADDR_BA;
-
-        if (ioctl(fd, I2C_RDWR, &ioctl_data) >= 0) {
-            std::cout << "GT911 found at address 0x5D on " << i2c_paths[i] << std::endl;
-            i2c_fd = fd;
-            i2c_addr = GT911_I2C_ADDR_BA;
-            return true;
-        }
-
-        close(fd);
+    // User specifically requested to only use /dev/i2c-3 at address 0x5D
+    const char* i2c_path = "/dev/i2c-3";
+    int fd = open(i2c_path, O_RDWR);
+    if (fd < 0) {
+        std::cerr << "Failed to open I2C bus: " << i2c_path << std::endl;
+        return false;
     }
 
-    std::cerr << "GT911 not found on any I2C bus!" << std::endl;
+    // Attempt to read Product ID from 0x5D to verify
+    uint8_t reg_buf[2] = {0x81, 0x40}; // Product ID register
+    uint8_t pid[4] = {0};
+
+    struct i2c_msg msgs[2];
+    msgs[0].addr = GT911_I2C_ADDR_BA; // 0x5D
+    msgs[0].flags = 0;
+    msgs[0].len = 2;
+    msgs[0].buf = reg_buf;
+    msgs[1].addr = GT911_I2C_ADDR_BA;
+    msgs[1].flags = I2C_M_RD;
+    msgs[1].len = 4;
+    msgs[1].buf = pid;
+
+    struct i2c_rdwr_ioctl_data ioctl_data;
+    ioctl_data.msgs = msgs;
+    ioctl_data.nmsgs = 2;
+
+    if (ioctl(fd, I2C_RDWR, &ioctl_data) >= 0) {
+        std::cout << "GT911 successfully connected at address 0x5D on " << i2c_path << std::endl;
+        i2c_fd = fd;
+        i2c_addr = GT911_I2C_ADDR_BA;
+        return true;
+    }
+
+    close(fd);
+    std::cerr << "GT911 not responding at address 0x5D on " << i2c_path << std::endl;
     return false;
 }
 

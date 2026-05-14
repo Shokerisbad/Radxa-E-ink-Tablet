@@ -73,7 +73,9 @@ void create_status_bar() {
 
     // Time Label
     lv_obj_t * time_label = lv_label_create(status_bar);
-    lv_label_set_text(time_label, "12:00");
+    time_t t_init = time(NULL);
+    struct tm tm_init = *localtime(&t_init);
+    lv_label_set_text_fmt(time_label, "%02d:%02d", tm_init.tm_hour, tm_init.tm_min);
     lv_obj_align(time_label, LV_ALIGN_CENTER, 0, 0);
 
     // Create a timer to update these statuses

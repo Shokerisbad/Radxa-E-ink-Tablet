@@ -483,18 +483,22 @@ void build_tablet_ui() {
   lv_obj_t *btn_lib = lv_btn_create(screen_main);
   lv_obj_align(btn_lib, LV_ALIGN_CENTER, 0, -50);
   lv_obj_set_size(btn_lib, 200, 50);
+  lv_obj_set_style_bg_color(btn_lib, lv_color_black(), 0);
   lv_obj_add_event_cb(btn_lib, load_screen_cb, LV_EVENT_CLICKED,
                       screen_library);
   lv_obj_t *lbl_lib = lv_label_create(btn_lib);
   lv_label_set_text(lbl_lib, "My Library");
+  lv_obj_set_style_text_color(lbl_lib, lv_color_white(), 0);
   lv_obj_center(lbl_lib);
 
   lv_obj_t *btn_ai = lv_btn_create(screen_main);
   lv_obj_align(btn_ai, LV_ALIGN_CENTER, 0, 30);
   lv_obj_set_size(btn_ai, 200, 50);
+  lv_obj_set_style_bg_color(btn_ai, lv_color_black(), 0);
   lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_CLICKED, screen_ai);
   lv_obj_t *lbl_ai = lv_label_create(btn_ai);
   lv_label_set_text(lbl_ai, "AI Assistant");
+  lv_obj_set_style_text_color(lbl_ai, lv_color_white(), 0);
   lv_obj_center(lbl_ai);
 
   // --- LIBRARY SCREEN ---

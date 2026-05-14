@@ -1361,12 +1361,18 @@
 /* Smart watch demo */
 #define LV_USE_DEMO_SMARTWATCH      0
 
+#define LV_USE_SYSMON 0
+
+#define LV_USE_PERF_MONITOR 0
+
+#define LV_USE_MEM_MONITOR 0 
+
+
 /*--END OF LV_CONF_H--*/
 
 #endif /*LV_CONF_H*/
 
 #endif /*End of "Content enable"*/
-# d e f i n e   L V _ U S E _ S Y S M O N   0  
- # d e f i n e   L V _ U S E _ P E R F _ M O N I T O R   0  
- # d e f i n e   L V _ U S E _ M E M _ M O N I T O R   0  
+
+ 
  

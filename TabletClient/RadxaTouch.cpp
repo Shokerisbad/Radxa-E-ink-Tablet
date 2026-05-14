@@ -164,18 +164,37 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
             //   Byte 5-7: Size + reserved
             uint8_t point_data[8] = {0}; // Initialize to zero to prevent stack garbage
             if (g_touch_instance->read_reg(0x8150, point_data, 8)) {
-                // Offset by 1 to skip Track ID (matching Python: data[i*8+1])
-                int phys_x = point_data[1] | (point_data[2] << 8);
-                int phys_y = point_data[3] | (point_data[4] << 8);
+                // Offset by 1 to skip Track ID
+                int raw_x = point_data[1] | (point_data[2] << 8);
+                int raw_y = point_data[3] | (point_data[4] << 8);
+
+                // GT911 on this panel appears to be sending MSB first (e.g., 65025 instead of 510)
+                // If coordinates are insanely large, swap the bytes:
+                if (raw_x > 4000 || raw_y > 4000) {
+                    raw_x = (point_data[1] << 8) | point_data[2];
+                    raw_y = (point_data[3] << 8) | point_data[4];
+                }
 
                 // --- Coordinate Mapping ---
                 // Physical touch panel: 800x480 (Landscape)
                 // LVGL Logical screen: 480x800 (Portrait)
                 // EPD flush_cb rotates: logical(lx,ly) -> physical(799-ly, lx)
                 // Reverse for touch: log_x = phys_y, log_y = 799 - phys_x
-                g_touch_instance->last_x = phys_y;
-                g_touch_instance->last_y = 799 - phys_x;
+                int log_x = raw_y;
+                int log_y = 799 - raw_x;
+
+                // Clamp to prevent LVGL warnings if touching the absolute edges
+                if (log_x < 0) log_x = 0;
+                if (log_x > 479) log_x = 479;
+                if (log_y < 0) log_y = 0;
+                if (log_y > 799) log_y = 799;
+
+                g_touch_instance->last_x = log_x;
+                g_touch_instance->last_y = log_y;
                 g_touch_instance->is_pressed = true;
+
+                std::cout << "Touch detected: Physical(" << raw_x << ", " << raw_y 
+                          << ") -> Logical(" << log_x << ", " << log_y << ")" << std::endl;
             }
         } else {
             g_touch_instance->is_pressed = false;

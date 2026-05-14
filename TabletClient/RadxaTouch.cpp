@@ -12,7 +12,7 @@
 
 RadxaTouch *g_touch_instance = nullptr;
 
-RadxaTouch::RadxaTouch() : i2c_fd(-1), i2c_addr(GT911_I2C_ADDR_28), gpio_chip(nullptr), line_rst(nullptr), line_int(nullptr), last_x(0), last_y(0), is_pressed(false) {
+RadxaTouch::RadxaTouch() : i2c_fd(-1), i2c_addr(GT911_I2C_ADDR_28), line_rst(nullptr), line_int(nullptr), last_x(0), last_y(0), is_pressed(false) {
     g_touch_instance = this;
 }
 
@@ -20,7 +20,6 @@ RadxaTouch::~RadxaTouch() {
     if (i2c_fd >= 0) close(i2c_fd);
     if (line_rst) gpiod_line_release(line_rst);
     if (line_int) gpiod_line_release(line_int);
-    if (gpio_chip) gpiod_chip_close(gpio_chip);
 }
 
 bool RadxaTouch::init_gpio() {
@@ -50,9 +49,11 @@ void RadxaTouch::reset_controller() {
 }
 
 bool RadxaTouch::init_i2c() {
-    // Only try /dev/i2c-5 because that corresponds to physical pins 31 (SDA) and 33 (SCL)
+    // Scan all available I2C buses to find the GT911 (Blinka auto-detects in Python)
     const char* i2c_paths[] = {
-        "/dev/i2c-5", nullptr
+        "/dev/i2c-0", "/dev/i2c-1", "/dev/i2c-2", "/dev/i2c-3",
+        "/dev/i2c-4", "/dev/i2c-5", "/dev/i2c-6", "/dev/i2c-7",
+        nullptr
     };
 
     for (int i = 0; i2c_paths[i] != nullptr; i++) {

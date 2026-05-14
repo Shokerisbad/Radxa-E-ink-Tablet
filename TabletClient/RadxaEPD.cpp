@@ -30,7 +30,7 @@
 RadxaEPD *g_epd_instance = nullptr;
 
 RadxaEPD::RadxaEPD()
-    : spi_fd(-1), gpio_chip(nullptr), line_cs(nullptr), line_dc(nullptr),
+    : spi_fd(-1), line_cs(nullptr), line_dc(nullptr),
       line_rst(nullptr), line_busy(nullptr) {
   g_epd_instance = this;
 }
@@ -46,8 +46,6 @@ RadxaEPD::~RadxaEPD() {
     gpiod_line_release(line_rst);
   if (line_busy)
     gpiod_line_release(line_busy);
-  if (gpio_chip)
-    gpiod_chip_close(gpio_chip);
 }
 
 bool RadxaEPD::init_gpio() {
@@ -88,7 +86,7 @@ bool RadxaEPD::init_spi() {
     return false;
   }
 
-  uint8_t mode = SPI_MODE;
+  uint8_t mode = SPI_MODE | SPI_NO_CS; // Manual GPIO CS — prevent kernel from toggling its own CS
   uint8_t bits = SPI_BITS;
   uint32_t speed = SPI_SPEED;
 
@@ -233,7 +231,8 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   // Step 1: Build the physical 800x480 1-bit buffer by rotating the LVGL
   // pixels. Rotation: logical (lx, ly) -> physical (phys_w - 1 - ly, lx)
   //   i.e. rotate 90° clockwise
-  std::vector<uint8_t> phys_buffer(frame_bytes, 0xFF); // default white
+  // Panel polarity: 0x00 = white, set bit = black (matches working Python driver)
+  std::vector<uint8_t> phys_buffer(frame_bytes, 0x00); // default white
 
 #if LV_COLOR_DEPTH == 32
   lv_color32_t *buf32 = (lv_color32_t *)px_map;
@@ -249,7 +248,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int phys_idx = py * phys_w + px;
         int byte_idx = phys_idx / 8;
         int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
+        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
       }
     }
   }
@@ -268,7 +267,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int phys_idx = py * phys_w + px;
         int byte_idx = phys_idx / 8;
         int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
+        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
       }
     }
   }
@@ -280,8 +279,8 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
 
   // Step 2: Send to EPD — always full frame
-  // Write white (0xFF) to OLD buffer (0x10)
-  std::vector<uint8_t> old_buf(frame_bytes, 0xFF);
+  // Write white (0x00) to OLD buffer (0x10) — panel polarity: 0x00 = white
+  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
   g_epd_instance->send_command(0x10);
   g_epd_instance->send_data_array(old_buf.data(), frame_bytes);
 

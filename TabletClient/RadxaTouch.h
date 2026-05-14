@@ -4,11 +4,6 @@
 #include <string>
 #include "lvgl/lvgl.h"
 
-// I2C Device Configuration
-#ifndef TOUCH_I2C_DEVICE
-#define TOUCH_I2C_DEVICE "/dev/i2c-3" // Adjust if your SDA/SCL (pins 3/5) map to a different I2C bus
-#endif
-
 // GPIO Configuration (Physical Pin Numbers)
 #define TOUCH_PIN_RST "PIN_37"
 #define TOUCH_PIN_INT "PIN_35"
@@ -39,7 +34,6 @@ private:
     uint8_t i2c_addr;
 
     // libgpiod resources
-    struct gpiod_chip *gpio_chip;
     struct gpiod_line *line_rst;
     struct gpiod_line *line_int;
 

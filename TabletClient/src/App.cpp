@@ -787,7 +787,7 @@ static void render_ai_async_cb(void* user_data) {
                     if (book_id != "unknown") {
                         std::string bmp_path = "books/.cache/ai_covers/" + book_id + ".bmp";
                         if (std::filesystem::exists(bmp_path)) {
-                            lv_obj_t* img_obj = lv_img_create(row);
+                            lv_obj_t* img_obj = lv_image_create(row);
                             lv_obj_move_to_index(img_obj, 0); // Put image on the left of text
                             lv_img_set_src(img_obj, ("A:" + bmp_path).c_str());
                         }
@@ -817,7 +817,14 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
   lv_label_set_text(loading_lbl, "Thinking...");
 
   // Run in background thread to not block LVGL UI
-  std::thread([user_prompt, exact_match, use_reviews]() {
+  // Copy shared state under lock before entering background thread
+  std::vector<FinishedBook> books_snapshot;
+  {
+    std::lock_guard<std::mutex> lock(lvgl_mutex);
+    books_snapshot = locally_finished_books;
+  }
+
+  std::thread([user_prompt, exact_match, use_reviews, books_snapshot]() {
     httplib::Client cli("127.0.0.1", 8000);
     cli.set_connection_timeout(5, 0);   // 5 seconds to connect
     cli.set_read_timeout(60, 0);        // 60 seconds max for semantic search and downloading covers
@@ -830,7 +837,7 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
                     {"language", "eng"}};
 
     json fin_books = json::array();
-    for (const auto &b : locally_finished_books) {
+    for (const auto &b : books_snapshot) {
       fin_books.push_back({{"title", b.title},
                            {"total_pages", b.total_pages},
                            {"user_rating", b.user_rating}});
@@ -902,9 +909,6 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
       lvgl_mutex.unlock();
     }
   }).detach();
-
-  // IMPORTANT: Actually load the main screen we just built!
-  lv_screen_load(screen_main);
 }
 
 // --- END E-INK APP UI PLUMBING ---

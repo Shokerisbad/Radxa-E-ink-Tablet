@@ -8,6 +8,9 @@
 #include "RadxaEPD.h"
 #include "RadxaTouch.h"
 #include "src/App.h"
+#include <mutex>
+
+extern std::mutex lvgl_mutex;
 
 // Define display resolution
 // Logical resolution (portrait — how LVGL sees the screen)
@@ -48,7 +51,6 @@ void create_status_bar() {
     lv_obj_align(status_bar, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_radius(status_bar, 0, 0);
     lv_obj_set_style_bg_color(status_bar, lv_color_white(), 0);
-    lv_obj_set_style_border_width(status_bar, 0, 0);
     lv_obj_set_style_border_side(status_bar, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_border_color(status_bar, lv_color_black(), 0);
     lv_obj_set_style_border_width(status_bar, 2, 0);
@@ -75,6 +77,7 @@ void create_status_bar() {
     lv_obj_align(time_label, LV_ALIGN_CENTER, 0, 0);
 
     // Create a timer to update these statuses
+    static lv_obj_t* status_labels[4] = {wifi_label, vpn_label, batt_label, time_label};
     lv_timer_create([](lv_timer_t * timer) {
         lv_obj_t ** labels = (lv_obj_t **)lv_timer_get_user_data(timer);
         lv_obj_t * w_lbl = labels[0];
@@ -106,7 +109,7 @@ void create_status_bar() {
         time_t t = time(NULL);
         struct tm tm = *localtime(&t);
         lv_label_set_text_fmt(t_lbl, "%02d:%02d", tm.tm_hour, tm.tm_min);
-    }, 60000, new lv_obj_t*[4]{wifi_label, vpn_label, batt_label, time_label}); // Update every minute
+    }, 60000, status_labels); // Update every minute
 }
 
 int main(void) {
@@ -156,7 +159,10 @@ int main(void) {
     // 5. Main LVGL Loop
     std::cout << "Entering LVGL Main Loop...\n";
     while (g_running) {
-        lv_timer_handler();
+        {
+            std::lock_guard<std::mutex> lock(lvgl_mutex);
+            lv_timer_handler();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(5)); // Sleep to save CPU
     }
 

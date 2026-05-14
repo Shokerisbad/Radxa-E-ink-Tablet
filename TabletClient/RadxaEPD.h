@@ -29,7 +29,6 @@ public:
 
 private:
     int spi_fd;
-    struct gpiod_chip *gpio_chip;
     struct gpiod_line *line_cs;
     struct gpiod_line *line_dc;
     struct gpiod_line *line_rst;

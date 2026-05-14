@@ -62,5 +62,4 @@ target_link_libraries(TabletClient PRIVATE
 
 if(TARGET lvgl)
     target_link_libraries(TabletClient PRIVATE lvgl)
-    target_link_libraries(TabletClient PRIVATE lvgl::examples)
 endif()

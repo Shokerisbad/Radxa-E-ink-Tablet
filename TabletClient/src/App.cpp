@@ -219,7 +219,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
 
           delete data;
         },
-        LV_EVENT_CLICKED, rdata);
+        LV_EVENT_PRESSED, rdata);
   }
 
   lv_obj_t *close_btn = create_styled_btn(modal);
@@ -228,7 +228,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
   lv_obj_add_event_cb(
       close_btn,
       [](lv_event_t *e) { lv_obj_del((lv_obj_t *)lv_event_get_user_data(e)); },
-      LV_EVENT_CLICKED, modal);
+      LV_EVENT_PRESSED, modal);
 }
 
 static void update_reader_ui() {
@@ -411,7 +411,7 @@ static void build_library_list() {
 
         lv_obj_t *btn = create_styled_btn(book_list);
         lv_obj_set_width(btn, LV_PCT(100));
-        lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_CLICKED,
+        lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_PRESSED,
                             (void *)book_filepaths.back().c_str());
         lv_obj_t *lbl = lv_label_create(btn);
         lv_label_set_text(lbl, entry.path().filename().string().c_str());
@@ -483,7 +483,7 @@ static void jump_btn_cb(lv_event_t *e) {
         lv_obj_del(data->modal);
         delete data;
       },
-      LV_EVENT_CLICKED, jd);
+      LV_EVENT_PRESSED, jd);
 }
 
 static void global_gesture_cb(lv_event_t *e) {
@@ -547,7 +547,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
   // Toggle bottom bar when clicking anywhere on the background of the read
   // screen
-  lv_obj_add_event_cb(screen_book_reader, toggle_bottombar_cb, LV_EVENT_CLICKED,
+  lv_obj_add_event_cb(screen_book_reader, toggle_bottombar_cb, LV_EVENT_PRESSED,
                       NULL);
 
   // --- MAIN SCREEN ---
@@ -558,7 +558,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_t *btn_lib = create_styled_btn(screen_main);
   lv_obj_align(btn_lib, LV_ALIGN_CENTER, 0, -50);
   lv_obj_set_size(btn_lib, 200, 50);
-    lv_obj_add_event_cb(btn_lib, load_screen_cb, LV_EVENT_CLICKED,
+    lv_obj_add_event_cb(btn_lib, load_screen_cb, LV_EVENT_PRESSED,
                       screen_library);
   lv_obj_t *lbl_lib = lv_label_create(btn_lib);
   lv_label_set_text(lbl_lib, "My Library");
@@ -567,7 +567,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_t *btn_ai = create_styled_btn(screen_main);
   lv_obj_align(btn_ai, LV_ALIGN_CENTER, 0, 30);
   lv_obj_set_size(btn_ai, 200, 50);
-    lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_CLICKED, screen_ai);
+    lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_PRESSED, screen_ai);
   lv_obj_t *lbl_ai = lv_label_create(btn_ai);
   lv_label_set_text(lbl_ai, "AI Assistant");
     lv_obj_center(lbl_ai);
@@ -579,14 +579,14 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
   lv_obj_t *lib_back = create_styled_btn(screen_library);
   lv_obj_align(lib_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
-  lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
+  lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_PRESSED, screen_main);
   lv_obj_t *lbl_lib_back = lv_label_create(lib_back);
   lv_label_set_text(lbl_lib_back, LV_SYMBOL_HOME);
     lv_obj_center(lbl_lib_back);
 
   lv_obj_t *lib_refresh = create_styled_btn(screen_library);
   lv_obj_align(lib_refresh, LV_ALIGN_TOP_RIGHT, -20, 40); // Shifted down for status bar
-    lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_PRESSED, NULL);
   lv_obj_t *lbl_lib_refresh = lv_label_create(lib_refresh);
   lv_label_set_text(lbl_lib_refresh, "Refresh");
     lv_obj_center(lbl_lib_refresh);
@@ -604,16 +604,6 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_t *reader_topbar = create_white_container(screen_book_reader);
   lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
   lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30); // Shifted down for status bar
-
-  lv_obj_t *reader_back = create_styled_btn(screen_book_reader);
-  lv_obj_set_style_transform_zoom(reader_back, 256, 0);
-  lv_obj_set_style_shadow_width(reader_back, 0, 0);
-  lv_obj_align(reader_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
-  lv_obj_add_event_cb(reader_back, load_screen_cb, LV_EVENT_CLICKED,
-                      screen_library);
-  lv_obj_t *lbl_reader_back = lv_label_create(reader_back);
-  lv_label_set_text(lbl_reader_back, "Library");
-  lv_obj_center(lbl_reader_back);
 
   reader_title_label = lv_label_create(reader_topbar);
   lv_label_set_text(reader_title_label, "Reading Book...");
@@ -655,13 +645,20 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_set_flex_align(reader_bottombar, LV_FLEX_ALIGN_SPACE_EVENLY,
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
+  lv_obj_t *reader_back = create_styled_btn(reader_bottombar);
+  lv_obj_add_event_cb(reader_back, load_screen_cb, LV_EVENT_PRESSED,
+                      screen_library);
+  lv_obj_t *lbl_reader_back = lv_label_create(reader_back);
+  lv_label_set_text(lbl_reader_back, LV_SYMBOL_HOME);
+  lv_obj_center(lbl_reader_back);
+
   lv_obj_t *btn_prev = create_styled_btn(reader_bottombar);
-  lv_obj_add_event_cb(btn_prev, reader_prev_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(btn_prev, reader_prev_cb, LV_EVENT_PRESSED, NULL);
   lv_obj_t *lbl_prev = lv_label_create(btn_prev);
   lv_label_set_text(lbl_prev, "<- Prev");
 
   lv_obj_t *btn_jump = create_styled_btn(reader_bottombar);
-  lv_obj_add_event_cb(btn_jump, jump_btn_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(btn_jump, jump_btn_cb, LV_EVENT_PRESSED, NULL);
   lv_obj_t *lbl_jump = lv_label_create(btn_jump);
   lv_label_set_text(lbl_jump, "Jump");
 
@@ -670,14 +667,14 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_label_set_text(reader_page_label, "- / -");
 
   lv_obj_t *btn_next = create_styled_btn(reader_bottombar);
-  lv_obj_add_event_cb(btn_next, reader_next_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(btn_next, reader_next_cb, LV_EVENT_PRESSED, NULL);
   lv_obj_t *lbl_next = lv_label_create(btn_next);
   lv_label_set_text(lbl_next, "Next ->");
 
   // --- AI ASSISTANT SCREEN ---
   lv_obj_t *ai_back = create_styled_btn(screen_ai);
   lv_obj_align(ai_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
-  lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
+  lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_PRESSED, screen_main);
   lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
   lv_label_set_text(lbl_ai_back, LV_SYMBOL_HOME);
   lv_obj_center(lbl_ai_back);
@@ -728,7 +725,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
           lv_textarea_set_text(ai_input_ta, "");
         }
       },
-      LV_EVENT_CLICKED, history_cb);
+      LV_EVENT_PRESSED, history_cb);
   lv_obj_t *ai_send_lbl = lv_label_create(ai_send_btn);
   lv_label_set_text(ai_send_lbl, "Recommend");
   lv_obj_center(ai_send_lbl);
@@ -746,7 +743,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
           lv_textarea_set_text(ai_input_ta, "");
         }
       },
-      LV_EVENT_CLICKED, history_cb);
+      LV_EVENT_PRESSED, history_cb);
   lv_obj_t *ai_search_lbl = lv_label_create(ai_search_btn);
   lv_label_set_text(ai_search_lbl, "Search");
   lv_obj_center(ai_search_lbl);

@@ -84,6 +84,12 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_radius(btn, 5, 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
     lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
+    lv_obj_set_style_transform_width(btn, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_transform_height(btn, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_translate_y(btn, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_set_style_shadow_width(btn, 0, LV_STATE_PRESSED);
+    lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
     return btn;
 }
 
@@ -572,7 +578,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_align(lib_title, LV_ALIGN_TOP_MID, 0, 45); // Shifted down for status bar
 
   lv_obj_t *lib_back = create_styled_btn(screen_library);
-  lv_obj_align(lib_back, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+  lv_obj_align(lib_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
   lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_lib_back = lv_label_create(lib_back);
   lv_label_set_text(lbl_lib_back, LV_SYMBOL_HOME);
@@ -599,8 +605,10 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
   lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30); // Shifted down for status bar
 
-  lv_obj_t *reader_back = create_styled_btn(reader_topbar);
-  lv_obj_align(reader_back, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_t *reader_back = create_styled_btn(screen_book_reader);
+  lv_obj_set_style_transform_zoom(reader_back, 256, 0);
+  lv_obj_set_style_shadow_width(reader_back, 0, 0);
+  lv_obj_align(reader_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
   lv_obj_add_event_cb(reader_back, load_screen_cb, LV_EVENT_CLICKED,
                       screen_library);
   lv_obj_t *lbl_reader_back = lv_label_create(reader_back);
@@ -668,7 +676,7 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
   // --- AI ASSISTANT SCREEN ---
   lv_obj_t *ai_back = create_styled_btn(screen_ai);
-  lv_obj_align(ai_back, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+  lv_obj_align(ai_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
   lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
   lv_label_set_text(lbl_ai_back, LV_SYMBOL_HOME);

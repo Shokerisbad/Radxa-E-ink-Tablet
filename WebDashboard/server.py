@@ -9,6 +9,7 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 # Determine book storage directory location dynamically
 BOOKS_DIR = None
 potential_dirs = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'TabletClient', 'build', 'books')),
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'TabletClient', 'books')),
     os.path.abspath(os.path.join(os.path.dirname(__file__), 'TabletClient', 'books')),
     os.path.abspath(os.path.join(os.path.dirname(__file__), 'books'))

@@ -77,21 +77,21 @@ std::vector<FinishedBook> locally_finished_books;
 // --- STYLED BUTTON HELPER ---
 static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_t * btn = lv_btn_create(parent);
-    lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
-    lv_obj_set_style_text_color(btn, lv_color_black(), 0);
-    lv_obj_set_style_border_color(btn, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_border_color(btn, lv_color_hex(0x000000), 0);
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_set_style_radius(btn, 5, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_PRESSED);
-    lv_obj_set_style_text_color(btn, lv_color_black(), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
     return btn;
 }
 
 
 static lv_obj_t * create_white_container(lv_obj_t * parent) {
     lv_obj_t * obj = lv_obj_create(parent);
-    lv_obj_set_style_bg_color(obj, lv_color_white(), 0);
-    lv_obj_set_style_text_color(obj, lv_color_black(), 0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(obj, lv_color_hex(0x000000), 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(obj, 0, 0);
     return obj;
@@ -431,8 +431,8 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 40);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
-  lv_obj_set_style_bg_color(kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_NUMBER);
   lv_keyboard_set_textarea(kb, ta);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -572,10 +572,10 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_align(lib_title, LV_ALIGN_TOP_MID, 0, 45); // Shifted down for status bar
 
   lv_obj_t *lib_back = create_styled_btn(screen_library);
-  lv_obj_align(lib_back, LV_ALIGN_TOP_LEFT, 20, 40); // Shifted down for status bar
-    lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
+  lv_obj_align(lib_back, LV_ALIGN_BOTTOM_LEFT, 20, -20);
+  lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_lib_back = lv_label_create(lib_back);
-  lv_label_set_text(lbl_lib_back, "Home");
+  lv_label_set_text(lbl_lib_back, LV_SYMBOL_HOME);
     lv_obj_center(lbl_lib_back);
 
   lv_obj_t *lib_refresh = create_styled_btn(screen_library);
@@ -668,10 +668,10 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
   // --- AI ASSISTANT SCREEN ---
   lv_obj_t *ai_back = create_styled_btn(screen_ai);
-  lv_obj_align(ai_back, LV_ALIGN_TOP_LEFT, 20, 40); // Shifted down for status bar
+  lv_obj_align(ai_back, LV_ALIGN_BOTTOM_LEFT, 20, -20);
   lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
-  lv_label_set_text(lbl_ai_back, "Home");
+  lv_label_set_text(lbl_ai_back, LV_SYMBOL_HOME);
   lv_obj_center(lbl_ai_back);
 
   lv_obj_t *ai_title = lv_label_create(screen_ai);
@@ -745,8 +745,8 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
   // Create keyboard but keep hidden
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);
-  lv_obj_set_style_bg_color(ai_kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(ai_kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(ai_kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(ai_kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_keyboard_set_textarea(ai_kb, ai_input_ta);
   lv_obj_add_flag(ai_kb, LV_OBJ_FLAG_HIDDEN);
 

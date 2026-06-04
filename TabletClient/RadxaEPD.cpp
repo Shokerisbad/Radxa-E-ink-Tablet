@@ -375,10 +375,19 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int px = x_start + px_offset;
         int ly = log_h - 1 - px;
 
-        int src_idx = ly * log_w + lx;
-        uint8_t brightness =
-            (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
-        if (brightness < 128) {
+        bool is_black = false;
+        if (lx >= area->x1 && lx <= area->x2 && ly >= area->y1 && ly <= area->y2) {
+            int map_w = area->x2 - area->x1 + 1;
+            int src_idx = (ly - area->y1) * map_w + (lx - area->x1);
+            uint8_t brightness = (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
+            is_black = (brightness < 128);
+        } else {
+            int global_byte = py * 100 + (px / 8);
+            int global_bit = 7 - (px % 8);
+            is_black = (g_last_frame[global_byte] & (1 << global_bit)) != 0;
+        }
+
+        if (is_black) {
           int phys_idx = py_offset * part_w + px_offset;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
@@ -395,12 +404,22 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         int px = x_start + px_offset;
         int ly = log_h - 1 - px;
 
-        int src_idx = ly * log_w + lx;
-        uint8_t r = (buf16[src_idx] >> 11) & 0x1F;
-        uint8_t g = (buf16[src_idx] >> 5) & 0x3F;
-        uint8_t b = buf16[src_idx] & 0x1F;
-        uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
-        if (brightness < 128) {
+        bool is_black = false;
+        if (lx >= area->x1 && lx <= area->x2 && ly >= area->y1 && ly <= area->y2) {
+            int map_w = area->x2 - area->x1 + 1;
+            int src_idx = (ly - area->y1) * map_w + (lx - area->x1);
+            uint8_t r = (buf16[src_idx] >> 11) & 0x1F;
+            uint8_t g = (buf16[src_idx] >> 5) & 0x3F;
+            uint8_t b = buf16[src_idx] & 0x1F;
+            uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
+            is_black = (brightness < 128);
+        } else {
+            int global_byte = py * 100 + (px / 8);
+            int global_bit = 7 - (px % 8);
+            is_black = (g_last_frame[global_byte] & (1 << global_bit)) != 0;
+        }
+
+        if (is_black) {
           int phys_idx = py_offset * part_w + px_offset;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);

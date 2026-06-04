@@ -263,6 +263,10 @@ void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, 
   send_command(0x92); // Exit partial mode
 }
 
+static std::vector<uint8_t> g_last_frame(48000, 0x00);
+static int s_min_x = 800, s_min_y = 480, s_max_x = -1, s_max_y = -1;
+static bool s_changed = false;
+
 void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
                         uint8_t *px_map) {
   if (!g_epd_instance) {
@@ -332,6 +336,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
 #endif
 
     std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
+    g_last_frame = phys_buffer;
     g_epd_instance->refresh_full(phys_buffer.data());
 
   } else {
@@ -405,9 +410,55 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     }
 #endif
 
-    std::cout << "Refreshing display (PARTIAL: x=" << x_start << ", y=" << y_start
-              << ", w=" << part_w << ", h=" << part_h << ")..." << std::endl;
-    g_epd_instance->refresh_partial(x_start, y_start, part_buffer.data(), part_w, part_h);
+    bool local_changed = false;
+    int part_stride = part_w / 8;
+    int phys_stride = 800 / 8;
+    for (int py = 0; py < part_h; py++) {
+      int phys_y = y_start + py;
+      for (int px_byte = 0; px_byte < part_stride; px_byte++) {
+        int phys_x_byte = (x_start / 8) + px_byte;
+        int part_idx = py * part_stride + px_byte;
+        int phys_idx = phys_y * phys_stride + phys_x_byte;
+        if (g_last_frame[phys_idx] != part_buffer[part_idx]) {
+           local_changed = true;
+           g_last_frame[phys_idx] = part_buffer[part_idx];
+        }
+      }
+    }
+
+    if (local_changed) {
+        s_changed = true;
+        if (x_start < s_min_x) s_min_x = x_start;
+        if (y_start < s_min_y) s_min_y = y_start;
+        if (x_end > s_max_x) s_max_x = x_end;
+        if (y_end > s_max_y) s_max_y = y_end;
+    }
+
+    if (lv_display_flush_is_last(disp)) {
+        if (s_changed) {
+            s_min_x = s_min_x & ~7;
+            s_max_x = ((s_max_x + 8) & ~7) - 1;
+            int final_w = s_max_x - s_min_x + 1;
+            int final_h = s_max_y - s_min_y + 1;
+            
+            std::vector<uint8_t> final_buf((final_w * final_h) / 8, 0x00);
+            int final_stride = final_w / 8;
+            for (int py = 0; py < final_h; py++) {
+                int phys_y = s_min_y + py;
+                for (int px_byte = 0; px_byte < final_stride; px_byte++) {
+                    int phys_x_byte = (s_min_x / 8) + px_byte;
+                    final_buf[py * final_stride + px_byte] = g_last_frame[phys_y * phys_stride + phys_x_byte];
+                }
+            }
+
+            std::cout << "Refreshing display (PARTIAL BATCHED: x=" << s_min_x << ", y=" << s_min_y
+                      << ", w=" << final_w << ", h=" << final_h << ")..." << std::endl;
+            g_epd_instance->refresh_partial(s_min_x, s_min_y, final_buf.data(), final_w, final_h);
+        }
+        
+        s_min_x = 800; s_min_y = 480; s_max_x = -1; s_max_y = -1;
+        s_changed = false;
+    }
   }
 
   lv_display_flush_ready(disp);

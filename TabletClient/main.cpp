@@ -130,7 +130,9 @@ int main(void) {
         // Child process: search for server.py and execute it
         const char* paths[] = {
             "../WebDashboard/server.py",
+            "../../WebDashboard/server.py",
             "./WebDashboard/server.py",
+            "/home/radxa/Radxa-E-ink-Tablet/WebDashboard/server.py",
             "/home/radxa/WebDashboard/server.py",
             "WebDashboard/server.py"
         };

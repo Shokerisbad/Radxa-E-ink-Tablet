@@ -74,8 +74,31 @@ static void write_bmp_cover(const char* filename, int w, int h, int comp, const 
 
 std::vector<FinishedBook> locally_finished_books;
 
+// --- STYLED BUTTON HELPER ---
+static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
+    lv_obj_t * btn = lv_btn_create(parent);
+    lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
+    lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+    lv_obj_set_style_border_color(btn, lv_color_black(), 0);
+    lv_obj_set_style_border_width(btn, 2, 0);
+    lv_obj_set_style_radius(btn, 5, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(btn, lv_color_black(), LV_STATE_PRESSED);
+    return btn;
+}
+
+
+static lv_obj_t * create_white_container(lv_obj_t * parent) {
+    lv_obj_t * obj = create_white_container(parent);
+    lv_obj_set_style_bg_color(obj, lv_color_white(), 0);
+    lv_obj_set_style_text_color(obj, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(obj, 0, 0);
+    return obj;
+}
 // --- CACHE MANAGEMENT ---
 static void checkAndClearCache() {
+
   std::string cachePath = "books/.cache";
   if (!std::filesystem::exists(cachePath))
     return;
@@ -131,7 +154,7 @@ static void build_library_list(); // Forward declaration
 static void request_ai_recommendation(const std::string &user_prompt, bool exact_match = false, bool use_reviews = true);
 
 static void show_rating_popup(const std::string &book_title, int total_pages) {
-  lv_obj_t *modal = lv_obj_create(lv_scr_act());
+  lv_obj_t *modal = create_white_container(lv_scr_act());
   lv_obj_set_size(modal, 400, 300);
   lv_obj_center(modal);
   lv_obj_set_style_bg_color(modal, lv_color_hex(0xFFFFFF), 0);
@@ -147,7 +170,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
                         book_title.c_str());
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 
-  lv_obj_t *btn_container = lv_obj_create(modal);
+  lv_obj_t *btn_container = create_white_container(modal);
   lv_obj_set_size(btn_container, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_style_bg_opa(btn_container, 0, 0);
   lv_obj_set_style_border_width(btn_container, 0, 0);
@@ -164,7 +187,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
   };
 
   for (int i = 1; i <= 5; ++i) {
-    lv_obj_t *btn = lv_btn_create(btn_container);
+    lv_obj_t *btn = create_styled_btn(btn_container);
     lv_obj_t *btn_lbl = lv_label_create(btn);
     lv_label_set_text_fmt(btn_lbl, "%d*", i);
 
@@ -193,7 +216,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
         LV_EVENT_CLICKED, rdata);
   }
 
-  lv_obj_t *close_btn = lv_btn_create(modal);
+  lv_obj_t *close_btn = create_styled_btn(modal);
   lv_obj_t *close_lbl = lv_label_create(close_btn);
   lv_label_set_text(close_lbl, "No Thanks");
   lv_obj_add_event_cb(
@@ -380,7 +403,7 @@ static void build_library_list() {
       if (ext == ".epub" || ext == ".pdf") {
         book_filepaths.push_back(entry.path().string());
 
-        lv_obj_t *btn = lv_btn_create(book_list);
+        lv_obj_t *btn = create_styled_btn(book_list);
         lv_obj_set_width(btn, LV_PCT(100));
         lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_CLICKED,
                             (void *)book_filepaths.back().c_str());
@@ -393,7 +416,7 @@ static void build_library_list() {
 }
 
 static void jump_btn_cb(lv_event_t *e) {
-  lv_obj_t *modal = lv_obj_create(lv_scr_act());
+  lv_obj_t *modal = create_white_container(lv_scr_act());
   lv_obj_set_size(modal, 400, 300);
   lv_obj_center(modal);
   lv_obj_set_style_bg_color(modal, lv_color_hex(0xFFFFFF), 0);
@@ -408,6 +431,8 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 40);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
+  lv_obj_set_style_bg_color(kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_NUMBER);
   lv_keyboard_set_textarea(kb, ta);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -439,7 +464,7 @@ static void jump_btn_cb(lv_event_t *e) {
       },
       LV_EVENT_READY, jd);
 
-  lv_obj_t *close_btn = lv_btn_create(modal);
+  lv_obj_t *close_btn = create_styled_btn(modal);
   lv_obj_set_size(close_btn, 40, 40);
   lv_obj_align(close_btn, LV_ALIGN_TOP_RIGHT, 0, 0);
   lv_obj_t *close_lbl = lv_label_create(close_btn);
@@ -456,7 +481,8 @@ static void jump_btn_cb(lv_event_t *e) {
 }
 
 static void global_gesture_cb(lv_event_t *e) {
-  lv_obj_t *screen = (lv_obj_t *)lv_event_get_current_target(e);
+  lv_obj_t *target = (lv_obj_t *)lv_event_get_current_target(e);
+  lv_obj_t *screen = lv_obj_get_screen(target);
   lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
 
   if (screen == screen_book_reader) {
@@ -488,16 +514,29 @@ void build_tablet_ui() {
   screen_ai = lv_obj_create(NULL);
 
   // Apply white background to all screens
-  lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-  lv_obj_set_style_bg_color(screen_library, lv_color_hex(0xFFFFFF),
-                            LV_PART_MAIN);
-  lv_obj_set_style_bg_color(screen_book_reader, lv_color_hex(0xFFFFFF),
-                            LV_PART_MAIN);
+lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_text_color(screen_main, lv_color_black(), LV_PART_MAIN);
+  
+  lv_obj_set_style_bg_color(screen_library, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_text_color(screen_library, lv_color_black(), LV_PART_MAIN);
+  
+  lv_obj_set_style_bg_color(screen_book_reader, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_text_color(screen_book_reader, lv_color_black(), LV_PART_MAIN);
+  
   lv_obj_set_style_bg_color(screen_ai, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_text_color(screen_ai, lv_color_black(), LV_PART_MAIN);
 
-  // Register gesture callbacks on screens
+  // Register gesture callbacks on screens and make them clickable
+  lv_obj_add_flag(screen_book_reader, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(screen_book_reader, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(screen_book_reader, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+  
+  lv_obj_add_flag(screen_library, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(screen_library, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(screen_library, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+  
+  lv_obj_add_flag(screen_ai, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(screen_ai, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(screen_ai, global_gesture_cb, LV_EVENT_GESTURE, NULL);
 
   // Toggle bottom bar when clicking anywhere on the background of the read
@@ -510,59 +549,57 @@ void build_tablet_ui() {
   lv_label_set_text(main_title, "E-Ink Reader Home");
   lv_obj_align(main_title, LV_ALIGN_TOP_MID, 0, 50);
 
-  lv_obj_t *btn_lib = lv_btn_create(screen_main);
+  lv_obj_t *btn_lib = create_styled_btn(screen_main);
   lv_obj_align(btn_lib, LV_ALIGN_CENTER, 0, -50);
   lv_obj_set_size(btn_lib, 200, 50);
-  lv_obj_set_style_bg_color(btn_lib, lv_color_black(), 0);
-  lv_obj_add_event_cb(btn_lib, load_screen_cb, LV_EVENT_CLICKED,
+    lv_obj_add_event_cb(btn_lib, load_screen_cb, LV_EVENT_CLICKED,
                       screen_library);
   lv_obj_t *lbl_lib = lv_label_create(btn_lib);
   lv_label_set_text(lbl_lib, "My Library");
-  lv_obj_set_style_text_color(lbl_lib, lv_color_white(), 0);
-  lv_obj_center(lbl_lib);
+    lv_obj_center(lbl_lib);
 
-  lv_obj_t *btn_ai = lv_btn_create(screen_main);
+  lv_obj_t *btn_ai = create_styled_btn(screen_main);
   lv_obj_align(btn_ai, LV_ALIGN_CENTER, 0, 30);
   lv_obj_set_size(btn_ai, 200, 50);
-  lv_obj_set_style_bg_color(btn_ai, lv_color_black(), 0);
-  lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_CLICKED, screen_ai);
+    lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_CLICKED, screen_ai);
   lv_obj_t *lbl_ai = lv_label_create(btn_ai);
   lv_label_set_text(lbl_ai, "AI Assistant");
-  lv_obj_set_style_text_color(lbl_ai, lv_color_white(), 0);
-  lv_obj_center(lbl_ai);
+    lv_obj_center(lbl_ai);
 
   // --- LIBRARY SCREEN ---
   lv_obj_t *lib_title = lv_label_create(screen_library);
   lv_label_set_text(lib_title, "Library Books");
   lv_obj_align(lib_title, LV_ALIGN_TOP_MID, 0, 45); // Shifted down for status bar
 
-  lv_obj_t *lib_back = lv_btn_create(screen_library);
+  lv_obj_t *lib_back = create_styled_btn(screen_library);
   lv_obj_align(lib_back, LV_ALIGN_TOP_LEFT, 20, 40); // Shifted down for status bar
-  lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
+    lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_lib_back = lv_label_create(lib_back);
   lv_label_set_text(lbl_lib_back, "Home");
-  lv_obj_center(lbl_lib_back);
+    lv_obj_center(lbl_lib_back);
 
-  lv_obj_t *lib_refresh = lv_btn_create(screen_library);
+  lv_obj_t *lib_refresh = create_styled_btn(screen_library);
   lv_obj_align(lib_refresh, LV_ALIGN_TOP_RIGHT, -20, 40); // Shifted down for status bar
-  lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_lib_refresh = lv_label_create(lib_refresh);
   lv_label_set_text(lbl_lib_refresh, "Refresh");
-  lv_obj_center(lbl_lib_refresh);
+    lv_obj_center(lbl_lib_refresh);
 
-  book_list = lv_obj_create(screen_library);
+  book_list = create_white_container(screen_library);
   lv_obj_set_size(book_list, 440, 660); // Maximized width and height
   lv_obj_align(book_list, LV_ALIGN_TOP_MID, 0, 100); // Placed cleanly below headers
+  lv_obj_set_scroll_dir(book_list, LV_DIR_VER); // Only scroll vertically
+  lv_obj_add_event_cb(book_list, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_set_flex_flow(book_list, LV_FLEX_FLOW_COLUMN);
 
   build_library_list();
 
   // --- BOOK READER SCREEN ---
-  lv_obj_t *reader_topbar = lv_obj_create(screen_book_reader);
+  lv_obj_t *reader_topbar = create_white_container(screen_book_reader);
   lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
   lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30); // Shifted down for status bar
 
-  lv_obj_t *reader_back = lv_btn_create(reader_topbar);
+  lv_obj_t *reader_back = create_styled_btn(reader_topbar);
   lv_obj_align(reader_back, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_add_event_cb(reader_back, load_screen_cb, LV_EVENT_CLICKED,
                       screen_library);
@@ -575,9 +612,10 @@ void build_tablet_ui() {
   lv_obj_align(reader_title_label, LV_ALIGN_CENTER, 0, 0);
 
   // Create a scrollable container for the body of the reader
-  lv_obj_t *reader_body = lv_obj_create(screen_book_reader);
-  lv_obj_set_size(reader_body, 480,
-                  650); // 800 (display) - 30 (status_bar) - 60 (topbar) - 60 (bottombar)
+  lv_obj_t *reader_body = create_white_container(screen_book_reader);
+  lv_obj_set_scroll_dir(reader_body, LV_DIR_VER); // Restrict to vertical scroll if any
+  lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+  lv_obj_set_size(reader_body, 480, 650); // 800 (display) - 30 (status_bar) - 60 (topbar) - 60 (bottombar)
   lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 90); // starts at y=90
   lv_obj_set_style_bg_opa(reader_body, 0, 0);
   lv_obj_set_style_border_width(reader_body, 0, 0);
@@ -601,7 +639,7 @@ void build_tablet_ui() {
                     "Select a book from the library to begin reading.");
 
   // Bottom Toolbar for Pagination (Always Visible)
-  reader_bottombar = lv_obj_create(screen_book_reader);
+  reader_bottombar = create_white_container(screen_book_reader);
   lv_obj_set_size(reader_bottombar, LV_PCT(100), 60);
   lv_obj_align(reader_bottombar, LV_ALIGN_BOTTOM_MID, 0, 0);
 
@@ -609,12 +647,12 @@ void build_tablet_ui() {
   lv_obj_set_flex_align(reader_bottombar, LV_FLEX_ALIGN_SPACE_EVENLY,
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  lv_obj_t *btn_prev = lv_btn_create(reader_bottombar);
+  lv_obj_t *btn_prev = create_styled_btn(reader_bottombar);
   lv_obj_add_event_cb(btn_prev, reader_prev_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_prev = lv_label_create(btn_prev);
   lv_label_set_text(lbl_prev, "<- Prev");
 
-  lv_obj_t *btn_jump = lv_btn_create(reader_bottombar);
+  lv_obj_t *btn_jump = create_styled_btn(reader_bottombar);
   lv_obj_add_event_cb(btn_jump, jump_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_jump = lv_label_create(btn_jump);
   lv_label_set_text(lbl_jump, "Jump");
@@ -623,13 +661,13 @@ void build_tablet_ui() {
   reader_page_label = lv_label_create(reader_bottombar);
   lv_label_set_text(reader_page_label, "- / -");
 
-  lv_obj_t *btn_next = lv_btn_create(reader_bottombar);
+  lv_obj_t *btn_next = create_styled_btn(reader_bottombar);
   lv_obj_add_event_cb(btn_next, reader_next_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_next = lv_label_create(btn_next);
   lv_label_set_text(lbl_next, "Next ->");
 
   // --- AI ASSISTANT SCREEN ---
-  lv_obj_t *ai_back = lv_btn_create(screen_ai);
+  lv_obj_t *ai_back = create_styled_btn(screen_ai);
   lv_obj_align(ai_back, LV_ALIGN_TOP_LEFT, 20, 40); // Shifted down for status bar
   lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
@@ -646,14 +684,16 @@ void build_tablet_ui() {
   lv_obj_add_state(history_cb, LV_STATE_CHECKED); // Default to checked
 
   // Input bar (fixed below the checkbox)
-  lv_obj_t *ai_input_bar = lv_obj_create(screen_ai);
+  lv_obj_t *ai_input_bar = create_white_container(screen_ai);
   lv_obj_set_size(ai_input_bar, LV_PCT(100), 50);
   lv_obj_align(ai_input_bar, LV_ALIGN_TOP_MID, 0, 110); // Shifted down
   lv_obj_set_flex_flow(ai_input_bar, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(ai_input_bar, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_all(ai_input_bar, 5, 0);
 
-  ai_content = lv_obj_create(screen_ai);
+  ai_content = create_white_container(screen_ai);
+  lv_obj_set_scroll_dir(ai_content, LV_DIR_VER);
+  lv_obj_add_event_cb(ai_content, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_set_size(ai_content, 460, 600); // Expanded default size
   lv_obj_align(ai_content, LV_ALIGN_TOP_MID, 0, 170); // Shifted down
   lv_obj_set_flex_flow(ai_content, LV_FLEX_FLOW_COLUMN);
@@ -667,7 +707,7 @@ void build_tablet_ui() {
   lv_obj_set_style_anim_duration(ai_input_ta, 0, LV_PART_CURSOR);
   lv_obj_set_style_opa(ai_input_ta, 0, LV_PART_CURSOR);
 
-  lv_obj_t *ai_send_btn = lv_btn_create(ai_input_bar);
+  lv_obj_t *ai_send_btn = create_styled_btn(ai_input_bar);
   lv_obj_set_size(ai_send_btn, 110, 40);
   lv_obj_add_event_cb(
       ai_send_btn,
@@ -685,7 +725,7 @@ void build_tablet_ui() {
   lv_label_set_text(ai_send_lbl, "Recommend");
   lv_obj_center(ai_send_lbl);
 
-  lv_obj_t *ai_search_btn = lv_btn_create(ai_input_bar);
+  lv_obj_t *ai_search_btn = create_styled_btn(ai_input_bar);
   lv_obj_set_size(ai_search_btn, 80, 40);
   lv_obj_add_event_cb(
       ai_search_btn,
@@ -705,6 +745,8 @@ void build_tablet_ui() {
 
   // Create keyboard but keep hidden
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);
+  lv_obj_set_style_bg_color(ai_kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(ai_kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_keyboard_set_textarea(ai_kb, ai_input_ta);
   lv_obj_add_flag(ai_kb, LV_OBJ_FLAG_HIDDEN);
 
@@ -791,7 +833,7 @@ static void render_ai_async_cb(void* user_data) {
                     }
 
                     // Create item container layout (image + text)
-                    lv_obj_t* row = lv_obj_create(ai_content);
+                    lv_obj_t* row = create_white_container(ai_content);
                     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
                     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
                     lv_obj_set_style_pad_all(row, 5, 0);
@@ -799,7 +841,7 @@ static void render_ai_async_cb(void* user_data) {
                     lv_obj_set_style_border_color(row, lv_color_hex(0xCCCCCC), 0);
 
                     // Container for text
-                    lv_obj_t* txt_cont = lv_obj_create(row);
+                    lv_obj_t* txt_cont = create_white_container(row);
                     lv_obj_set_size(txt_cont, 300, LV_SIZE_CONTENT);
                     lv_obj_set_flex_flow(txt_cont, LV_FLEX_FLOW_COLUMN);
                     lv_obj_set_style_pad_all(txt_cont, 0, 0);

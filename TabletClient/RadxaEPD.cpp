@@ -410,6 +410,9 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     g_epd_instance->refresh_partial(x_start, y_start, part_buffer.data(), part_w, part_h);
   }
 
+  lv_display_flush_ready(disp);
+}
+
 // System Status Checkers
 
 int RadxaEPD::get_battery_percentage() {

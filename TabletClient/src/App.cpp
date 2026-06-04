@@ -470,6 +470,11 @@ void build_tablet_ui() {
                             LV_PART_MAIN);
   lv_obj_set_style_bg_color(screen_ai, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
+  // Register gesture callbacks on screens
+  lv_obj_add_event_cb(screen_book_reader, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+  lv_obj_add_event_cb(screen_library, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+  lv_obj_add_event_cb(screen_ai, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+
   // Toggle bottom bar when clicking anywhere on the background of the read
   // screen
   lv_obj_add_event_cb(screen_book_reader, toggle_bottombar_cb, LV_EVENT_CLICKED,
@@ -504,25 +509,25 @@ void build_tablet_ui() {
   // --- LIBRARY SCREEN ---
   lv_obj_t *lib_title = lv_label_create(screen_library);
   lv_label_set_text(lib_title, "Library Books");
-  lv_obj_align(lib_title, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_align(lib_title, LV_ALIGN_TOP_MID, 0, 45); // Shifted down for status bar
 
   lv_obj_t *lib_back = lv_btn_create(screen_library);
-  lv_obj_align(lib_back, LV_ALIGN_TOP_LEFT, 20, 20);
+  lv_obj_align(lib_back, LV_ALIGN_TOP_LEFT, 20, 40); // Shifted down for status bar
   lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_lib_back = lv_label_create(lib_back);
   lv_label_set_text(lbl_lib_back, "Home");
   lv_obj_center(lbl_lib_back);
 
   lv_obj_t *lib_refresh = lv_btn_create(screen_library);
-  lv_obj_align(lib_refresh, LV_ALIGN_TOP_RIGHT, -20, 20);
+  lv_obj_align(lib_refresh, LV_ALIGN_TOP_RIGHT, -20, 40); // Shifted down for status bar
   lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_lib_refresh = lv_label_create(lib_refresh);
   lv_label_set_text(lbl_lib_refresh, "Refresh");
   lv_obj_center(lbl_lib_refresh);
 
   book_list = lv_obj_create(screen_library);
-  lv_obj_set_size(book_list, 400, 600);
-  lv_obj_align(book_list, LV_ALIGN_CENTER, 0, 30);
+  lv_obj_set_size(book_list, 440, 660); // Maximized width and height
+  lv_obj_align(book_list, LV_ALIGN_TOP_MID, 0, 100); // Placed cleanly below headers
   lv_obj_set_flex_flow(book_list, LV_FLEX_FLOW_COLUMN);
 
   build_library_list();
@@ -530,7 +535,7 @@ void build_tablet_ui() {
   // --- BOOK READER SCREEN ---
   lv_obj_t *reader_topbar = lv_obj_create(screen_book_reader);
   lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
-  lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30); // Shifted down for status bar
 
   lv_obj_t *reader_back = lv_btn_create(reader_topbar);
   lv_obj_align(reader_back, LV_ALIGN_LEFT_MID, 0, 0);
@@ -547,8 +552,8 @@ void build_tablet_ui() {
   // Create a scrollable container for the body of the reader
   lv_obj_t *reader_body = lv_obj_create(screen_book_reader);
   lv_obj_set_size(reader_body, 480,
-                  680); // 800 (display) - 60 (topbar) - 60 (bottombar)
-  lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 60);
+                  650); // 800 (display) - 30 (status_bar) - 60 (topbar) - 60 (bottombar)
+  lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 90); // starts at y=90
   lv_obj_set_style_bg_opa(reader_body, 0, 0);
   lv_obj_set_style_border_width(reader_body, 0, 0);
   lv_obj_remove_flag(reader_body, LV_OBJ_FLAG_SCROLLABLE);
@@ -600,7 +605,7 @@ void build_tablet_ui() {
 
   // --- AI ASSISTANT SCREEN ---
   lv_obj_t *ai_back = lv_btn_create(screen_ai);
-  lv_obj_align(ai_back, LV_ALIGN_TOP_LEFT, 20, 20);
+  lv_obj_align(ai_back, LV_ALIGN_TOP_LEFT, 20, 40); // Shifted down for status bar
   lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
   lv_label_set_text(lbl_ai_back, "Home");
@@ -608,25 +613,25 @@ void build_tablet_ui() {
 
   lv_obj_t *ai_title = lv_label_create(screen_ai);
   lv_label_set_text(ai_title, "AI Assistant");
-  lv_obj_align(ai_title, LV_ALIGN_TOP_MID, 0, 20);
+  lv_obj_align(ai_title, LV_ALIGN_TOP_MID, 0, 40); // Shifted down for status bar
 
-  // Input bar (fixed below the title at the top)
+  lv_obj_t * history_cb = lv_checkbox_create(screen_ai);
+  lv_checkbox_set_text(history_cb, "Use Reading History");
+  lv_obj_align(history_cb, LV_ALIGN_TOP_LEFT, 20, 80); // Placed cleanly above input bar
+  lv_obj_add_state(history_cb, LV_STATE_CHECKED); // Default to checked
+
+  // Input bar (fixed below the checkbox)
   lv_obj_t *ai_input_bar = lv_obj_create(screen_ai);
   lv_obj_set_size(ai_input_bar, LV_PCT(100), 50);
-  lv_obj_align(ai_input_bar, LV_ALIGN_TOP_MID, 0, 60);
+  lv_obj_align(ai_input_bar, LV_ALIGN_TOP_MID, 0, 110); // Shifted down
   lv_obj_set_flex_flow(ai_input_bar, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(ai_input_bar, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_all(ai_input_bar, 5, 0);
 
   ai_content = lv_obj_create(screen_ai);
-  lv_obj_set_size(ai_content, 460, 400);
-  lv_obj_align(ai_content, LV_ALIGN_TOP_MID, 0, 160);
+  lv_obj_set_size(ai_content, 460, 600); // Expanded default size
+  lv_obj_align(ai_content, LV_ALIGN_TOP_MID, 0, 170); // Shifted down
   lv_obj_set_flex_flow(ai_content, LV_FLEX_FLOW_COLUMN);
-
-  lv_obj_t * history_cb = lv_checkbox_create(screen_ai);
-  lv_checkbox_set_text(history_cb, "Use Reading History");
-  lv_obj_align(history_cb, LV_ALIGN_TOP_LEFT, 20, 120);
-  lv_obj_add_state(history_cb, LV_STATE_CHECKED); // Default to checked
 
   ai_input_ta = lv_textarea_create(ai_input_bar);
   lv_textarea_set_one_line(ai_input_ta, true);
@@ -698,10 +703,10 @@ void build_tablet_ui() {
         if (code == LV_EVENT_FOCUSED) {
           lv_obj_clear_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
           // Shrink content to make room for keyboard below it
-          lv_obj_set_height(ctx->content, 200);
+          lv_obj_set_height(ctx->content, 300);
         } else if (code == LV_EVENT_DEFOCUSED) {
           lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_height(ctx->content, 440);
+          lv_obj_set_height(ctx->content, 600);
         } else if (code == LV_EVENT_READY) {
           // Checkmark / Enter key pressed on keyboard
           const char *txt = lv_textarea_get_text(ta);
@@ -711,12 +716,12 @@ void build_tablet_ui() {
           }
           // Hide keyboard and drop focus
           lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_height(ctx->content, 440);
+          lv_obj_set_height(ctx->content, 600);
           lv_obj_remove_state(ta, LV_STATE_FOCUSED);
         } else if (code == LV_EVENT_CANCEL) {
           // Cancel / Close keyboard
           lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_height(ctx->content, 440);
+          lv_obj_set_height(ctx->content, 600);
           lv_obj_remove_state(ta, LV_STATE_FOCUSED);
         }
       },

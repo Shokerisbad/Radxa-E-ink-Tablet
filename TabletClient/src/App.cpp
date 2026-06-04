@@ -456,7 +456,7 @@ static void jump_btn_cb(lv_event_t *e) {
 }
 
 static void global_gesture_cb(lv_event_t *e) {
-  lv_obj_t *screen = lv_event_get_current_target(e);
+  lv_obj_t *screen = (lv_obj_t *)lv_event_get_current_target(e);
   lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
 
   if (screen == screen_book_reader) {

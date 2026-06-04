@@ -89,7 +89,7 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
 
 
 static lv_obj_t * create_white_container(lv_obj_t * parent) {
-    lv_obj_t * obj = create_white_container(parent);
+    lv_obj_t * obj = lv_obj_create(parent);
     lv_obj_set_style_bg_color(obj, lv_color_white(), 0);
     lv_obj_set_style_text_color(obj, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);

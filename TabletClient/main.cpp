@@ -3,6 +3,8 @@
 #include <chrono>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "lvgl/lvgl.h"
 #include "RadxaEPD.h"
@@ -26,6 +28,7 @@ extern std::mutex lvgl_mutex;
 #define DISP_BUF_SIZE (DISP_HOR_RES * DISP_VER_RES)
 
 volatile bool g_running = true;
+pid_t g_server_pid = -1;
 
 void signal_handler(int signum) {
     std::cout << "Interrupt signal (" << signum << ") received.\n";
@@ -120,6 +123,37 @@ int main(void) {
     signal(SIGTERM, signal_handler);
 
     std::cout << "Starting Radxa LVGL Tablet Client...\n";
+ 
+    // Spawn Web Dashboard server process
+    g_server_pid = fork();
+    if (g_server_pid == 0) {
+        // Child process: search for server.py and execute it
+        const char* paths[] = {
+            "../WebDashboard/server.py",
+            "./WebDashboard/server.py",
+            "/home/radxa/WebDashboard/server.py",
+            "WebDashboard/server.py"
+        };
+        
+        const char* selected_path = nullptr;
+        for (const char* p : paths) {
+            if (access(p, F_OK) == 0) {
+                selected_path = p;
+                break;
+            }
+        }
+        
+        if (selected_path) {
+            execlp("python3", "python3", selected_path, NULL);
+        } else {
+            std::cerr << "[Dashboard] server.py not found in common locations. Dashboard won't start.\n";
+        }
+        _exit(1); // Exit child immediately if exec fails
+    } else if (g_server_pid < 0) {
+        std::cerr << "[Dashboard] Failed to fork server process.\n";
+    } else {
+        std::cout << "[Dashboard] Spawned background Web Dashboard server (PID: " << g_server_pid << ")\n";
+    }
 
     // 1. Initialize LVGL
     lv_init();
@@ -138,7 +172,7 @@ int main(void) {
     
     lv_display_t * disp = lv_display_create(DISP_HOR_RES, DISP_VER_RES);
     lv_display_set_flush_cb(disp, RadxaEPD::flush_cb);
-    lv_display_set_buffers(disp, buf1, NULL, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_FULL);
+    lv_display_set_buffers(disp, buf1, NULL, DISP_BUF_SIZE * sizeof(lv_color32_t), LV_DISPLAY_RENDER_MODE_DIRECT);
 
     // No LVGL rotation — we handle it in flush_cb to avoid dimension mismatches
 
@@ -161,15 +195,29 @@ int main(void) {
     // 5. Main LVGL Loop
     std::cout << "Entering LVGL Main Loop...\n";
     while (g_running) {
+        uint32_t sleep_ms;
         {
             std::lock_guard<std::mutex> lock(lvgl_mutex);
-            lv_timer_handler();
+            sleep_ms = lv_timer_handler();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5)); // Sleep to save CPU
+        
+        // Clamp sleep to preserve touch responsiveness while preventing high CPU usage
+        if (sleep_ms < 10) sleep_ms = 10;
+        else if (sleep_ms > 40) sleep_ms = 40;
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
     }
 
     std::cout << "Putting display to sleep and exiting...\n";
     epd.sleep();
+ 
+    // Terminate spawned Web Dashboard server
+    if (g_server_pid > 0) {
+        std::cout << "[Dashboard] Terminating Web Dashboard server (PID: " << g_server_pid << ")..." << std::endl;
+        kill(g_server_pid, SIGTERM);
+        int status;
+        waitpid(g_server_pid, &status, 0);
+    }
 
     // Cleanup
     free(buf1);

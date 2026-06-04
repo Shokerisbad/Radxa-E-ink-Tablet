@@ -1,0 +1,17 @@
+[Unit]
+Description=Radxa E-Ink Tablet Dashboard Web Service
+After=network.target
+
+[Service]
+Type=simple
+User=radxa
+WorkingDirectory=/home/radxa/Radxa-E-ink-Tablet/WebDashboard
+ExecStart=/usr/bin/python3 server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=radxa-dashboard
+
+[Install]
+WantedBy=multi-user.target

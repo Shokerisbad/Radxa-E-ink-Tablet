@@ -3,6 +3,8 @@ LICENTA_SERVERSIDE/data/
 __pycache__/
 *.pyc
 .venv/
+venv/
+WebDashboard/venv/
 .idea/
 
 # Visual Studio Build Output
@@ -30,3 +32,6 @@ CMakeFiles/
 
 # Cache
 books/.cache/
+
+# Licenta DOC folder
+Licenta DOC/

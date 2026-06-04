@@ -32,7 +32,7 @@ RadxaEPD *g_epd_instance = nullptr;
 
 RadxaEPD::RadxaEPD()
     : spi_fd(-1), line_cs(nullptr), line_dc(nullptr),
-      line_rst(nullptr), line_busy(nullptr) {
+      line_rst(nullptr), line_busy(nullptr), first_refresh(true) {
   g_epd_instance = this;
 }
 
@@ -212,6 +212,57 @@ void RadxaEPD::wake() {
   init(); // Re-run initialization
 }
 
+void RadxaEPD::refresh_full(const uint8_t *buffer) {
+  const size_t frame_bytes = (800 * 480) / 8; // 48000 bytes
+
+  // Write white (0x00) to OLD buffer (0x10) — panel polarity: 0x00 = white
+  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
+  send_command(0x10);
+  send_data_array(old_buf.data(), frame_bytes);
+
+  // Write rotated image to NEW buffer (0x13)
+  send_command(0x13);
+  send_data_array(buffer, frame_bytes);
+
+  // Display Refresh
+  send_command(0x12);
+  std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Mandatory delay before polling BUSY
+  wait_until_idle();
+}
+
+void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, int part_w, int part_h) {
+  int x_end = x_start + part_w - 1;
+  int y_end = y_start + part_h - 1;
+  size_t count = (part_w * part_h) / 8;
+
+  // Partial settings from manufacturer reference
+  send_command(0x50);
+  send_data(0xA9);
+  send_data(0x07);
+
+  send_command(0x91); // Enter partial mode
+  send_command(0x90); // Partial resolution setting
+  send_data(x_start / 256);
+  send_data(x_start % 256);
+  send_data(x_end / 256);
+  send_data((x_end % 256) - 1);
+  
+  send_data(y_start / 256);
+  send_data(y_start % 256);
+  send_data(y_end / 256);
+  send_data((y_end % 256) - 1);
+  send_data(0x01); // Scan parameter (0x01 = scan only partial area)
+
+  send_command(0x13); // Write data to New SRAM
+  send_data_array(buffer, count);
+
+  send_command(0x12); // Display Refresh
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  wait_until_idle();
+
+  send_command(0x92); // Exit partial mode
+}
+
 void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
                         uint8_t *px_map) {
   if (!g_epd_instance) {
@@ -219,92 +270,145 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     return;
   }
 
-  // LVGL renders in portrait (480x800). We must rotate 90° to physical
-  // (800x480). In FULL render mode, area should always be the full logical
-  // screen.
   const int log_w = 480;                            // LVGL logical width
   const int log_h = 800;                            // LVGL logical height
   const int phys_w = 800;                           // EPD physical width
   const int phys_h = 480;                           // EPD physical height
-  const size_t frame_bytes = (phys_w * phys_h) / 8; // 48000 bytes
 
-  // Step 1: Build the physical 800x480 1-bit buffer by rotating the LVGL
-  // pixels. Rotation: logical (lx, ly) -> physical (phys_w - 1 - ly, lx)
-  //   i.e. rotate 90° clockwise
-  // Panel polarity: 0x00 = white, set bit = black (matches working Python driver)
-  std::vector<uint8_t> phys_buffer(frame_bytes, 0x00); // default white
+  // Calculate logical dirty area dimensions
+  int w = area->x2 - area->x1 + 1;
+  int h = area->y2 - area->y1 + 1;
+
+  // Decide if we should do a full refresh or partial refresh
+  // Full refresh is used for the first draw or large changes (> 40% screen area)
+  bool is_full = g_epd_instance->first_refresh || (w * h > 150000);
+
+  if (is_full) {
+    g_epd_instance->first_refresh = false;
+
+    // Full Refresh Flow
+    const size_t frame_bytes = (phys_w * phys_h) / 8; // 48000 bytes
+    std::vector<uint8_t> phys_buffer(frame_bytes, 0x00); // default white
 
 #if LV_COLOR_DEPTH == 32
-  lv_color32_t *buf32 = (lv_color32_t *)px_map;
-  for (int ly = 0; ly < log_h; ly++) {
-    for (int lx = 0; lx < log_w; lx++) {
-      int src_idx = ly * log_w + lx;
-      uint8_t brightness =
-          (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
-      if (brightness < 128) {
-        // Map logical portrait -> physical landscape (90° CW rotation)
-        int px = log_h - 1 - ly;
-        int py = lx;
-        int phys_idx = py * phys_w + px;
-        int byte_idx = phys_idx / 8;
-        int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+    lv_color32_t *buf32 = (lv_color32_t *)px_map;
+    for (int ly = 0; ly < log_h; ly++) {
+      for (int lx = 0; lx < log_w; lx++) {
+        int src_idx = ly * log_w + lx;
+        uint8_t brightness =
+            (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
+        if (brightness < 128) {
+          // Map logical portrait -> physical landscape (90° CW rotation)
+          int px = log_h - 1 - ly;
+          int py = lx;
+          int phys_idx = py * phys_w + px;
+          int byte_idx = phys_idx / 8;
+          int bit_idx = 7 - (phys_idx % 8);
+          phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+        }
       }
     }
-  }
 #elif LV_COLOR_DEPTH == 16
-  uint16_t *buf16 = (uint16_t *)px_map;
-  for (int ly = 0; ly < log_h; ly++) {
-    for (int lx = 0; lx < log_w; lx++) {
-      int src_idx = ly * log_w + lx;
-      uint8_t r = (buf16[src_idx] >> 11) & 0x1F;
-      uint8_t g = (buf16[src_idx] >> 5) & 0x3F;
-      uint8_t b = buf16[src_idx] & 0x1F;
-      uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
-      if (brightness < 128) {
-        int px = log_h - 1 - ly;
-        int py = lx;
-        int phys_idx = py * phys_w + px;
-        int byte_idx = phys_idx / 8;
-        int bit_idx = 7 - (phys_idx % 8);
-        phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+    uint16_t *buf16 = (uint16_t *)px_map;
+    for (int ly = 0; ly < log_h; ly++) {
+      for (int lx = 0; lx < log_w; lx++) {
+        int src_idx = ly * log_w + lx;
+        uint8_t r = (buf16[src_idx] >> 11) & 0x1F;
+        uint8_t g = (buf16[src_idx] >> 5) & 0x3F;
+        uint8_t b = buf16[src_idx] & 0x1F;
+        uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
+        if (brightness < 128) {
+          int px = log_h - 1 - ly;
+          int py = lx;
+          int phys_idx = py * phys_w + px;
+          int byte_idx = phys_idx / 8;
+          int bit_idx = 7 - (phys_idx % 8);
+          phys_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+        }
       }
     }
-  }
 #else
-  // For 1-bit depth, we'd need a bit-level rotation; skip for now
-  memcpy(phys_buffer.data(), px_map, frame_bytes);
+    memcpy(phys_buffer.data(), px_map, frame_bytes);
 #endif
 
-  std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
+    std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
+    g_epd_instance->refresh_full(phys_buffer.data());
 
-  // Step 2: Send to EPD — always full frame
-  // Write white (0x00) to OLD buffer (0x10) — panel polarity: 0x00 = white
-  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
-  g_epd_instance->send_command(0x10);
-  g_epd_instance->send_data_array(old_buf.data(), frame_bytes);
+  } else {
+    // Partial Refresh Flow
+    // Calculate raw physical coordinates from logical dirty area
+    // Rotation: logical (lx, ly) -> physical (log_h - 1 - ly, lx)
+    int px_start = log_h - 1 - area->y2;
+    int px_end = log_h - 1 - area->y1;
+    int py_start = area->x1;
+    int py_end = area->x2;
 
-  // Write rotated image to NEW buffer (0x13)
-  g_epd_instance->send_command(0x13);
-  g_epd_instance->send_data_array(phys_buffer.data(), frame_bytes);
+    // Align physical horizontal coordinates to 8-pixel boundaries for UC8179 controller
+    int x_start = px_start & ~7;
+    int x_end = ((px_end + 8) & ~7) - 1;
+    int y_start = py_start;
+    int y_end = py_end;
 
-  // Display Refresh
-  g_epd_instance->send_command(0x12);
-  std::this_thread::sleep_for(std::chrono::milliseconds(1)); // Mandatory delay before polling BUSY
-  g_epd_instance->wait_until_idle();
+    // Clamp coordinates
+    if (x_start < 0) x_start = 0;
+    if (x_end > 799) x_end = 799;
+    if (y_start < 0) y_start = 0;
+    if (y_end > 479) y_end = 479;
 
-  // EPD refreshes generate massive electrical noise which the I2C GT911 touch panel 
-  // picks up as phantom touches. This causes LVGL to think the user is scrolling,
-  // triggering another infinite refresh loop.
-  // We mute the touch controller for 500ms after a refresh completes to prevent this.
-  if (g_touch_instance) {
-      g_touch_instance->ignore_touches_for(500);
+    int part_w = x_end - x_start + 1;
+    int part_h = y_end - y_start + 1;
+    size_t part_bytes = (part_w * part_h) / 8;
+
+    std::vector<uint8_t> part_buffer(part_bytes, 0x00); // default white
+
+#if LV_COLOR_DEPTH == 32
+    lv_color32_t *buf32 = (lv_color32_t *)px_map;
+    for (int py_offset = 0; py_offset < part_h; py_offset++) {
+      int py = y_start + py_offset;
+      int lx = py;
+      for (int px_offset = 0; px_offset < part_w; px_offset++) {
+        int px = x_start + px_offset;
+        int ly = log_h - 1 - px;
+
+        int src_idx = ly * log_w + lx;
+        uint8_t brightness =
+            (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
+        if (brightness < 128) {
+          int phys_idx = py_offset * part_w + px_offset;
+          int byte_idx = phys_idx / 8;
+          int bit_idx = 7 - (phys_idx % 8);
+          part_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+        }
+      }
+    }
+#elif LV_COLOR_DEPTH == 16
+    uint16_t *buf16 = (uint16_t *)px_map;
+    for (int py_offset = 0; py_offset < part_h; py_offset++) {
+      int py = y_start + py_offset;
+      int lx = py;
+      for (int px_offset = 0; px_offset < part_w; px_offset++) {
+        int px = x_start + px_offset;
+        int ly = log_h - 1 - px;
+
+        int src_idx = ly * log_w + lx;
+        uint8_t r = (buf16[src_idx] >> 11) & 0x1F;
+        uint8_t g = (buf16[src_idx] >> 5) & 0x3F;
+        uint8_t b = buf16[src_idx] & 0x1F;
+        uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
+        if (brightness < 128) {
+          int phys_idx = py_offset * part_w + px_offset;
+          int byte_idx = phys_idx / 8;
+          int bit_idx = 7 - (phys_idx % 8);
+          part_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+        }
+      }
+    }
+#endif
+
+    std::cout << "Refreshing display (PARTIAL: x=" << x_start << ", y=" << y_start
+              << ", w=" << part_w << ", h=" << part_h << ")..." << std::endl;
+    g_epd_instance->refresh_partial(x_start, y_start, part_buffer.data(), part_w, part_h);
   }
-
-  std::cout << "Display updated!" << std::endl;
-
-  lv_display_flush_ready(disp);
-}
 
 // System Status Checkers
 

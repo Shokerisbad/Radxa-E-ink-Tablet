@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radxa E-Ink Tablet Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+    <!-- Toast Notifications Container -->
+    <div id="toast-container"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="logo-area">
+                <i data-lucide="tablet" class="logo-icon"></i>
+                <h1>RADXA <span class="accent-text">E-INK</span></h1>
+            </div>
+            <div id="vpn-status" class="status-badge disconnected">
+                <span class="pulse-dot"></span>
+                <span id="vpn-text">WireGuard: Disconnected</span>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Panel: Telemetry & Uploader -->
+            <div class="dashboard-column">
+                
+                <!-- Telemetry Widgets -->
+                <section class="widget-row">
+                    <!-- Battery -->
+                    <div class="telemetry-card">
+                        <div class="card-header">
+                            <span class="card-title">Battery</span>
+                            <i data-lucide="battery" id="battery-icon"></i>
+                        </div>
+                        <div class="card-body">
+                            <span class="huge-value" id="battery-val">--%</span>
+                            <span class="sub-label" id="battery-sub">Checking PMIC...</span>
+                        </div>
+                    </div>
+
+                    <!-- Temp -->
+                    <div class="telemetry-card">
+                        <div class="card-header">
+                            <span class="card-title">CPU Temp</span>
+                            <i data-lucide="thermometer" class="thermometer-icon"></i>
+                        </div>
+                        <div class="card-body">
+                            <span class="huge-value" id="temp-val">--°C</span>
+                            <span class="sub-label">Thermal Zone 0</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Storage Widget -->
+                <section class="telemetry-card storage-card">
+                    <div class="card-header">
+                        <span class="card-title">Storage Space</span>
+                        <i data-lucide="hard-drive"></i>
+                    </div>
+                    <div class="card-body">
+                        <div class="storage-stats">
+                            <span class="storage-used" id="storage-used-percent">--% Used</span>
+                            <span class="storage-free-lbl" id="storage-free-val">-- free</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="storage-progress" style="width: 0%"></div>
+                        </div>
+                        <span class="sub-label" id="storage-total-val">Total Capacity: --</span>
+                    </div>
+                </section>
+
+                <!-- File Uploader -->
+                <section class="telemetry-card upload-card">
+                    <div class="card-header">
+                        <span class="card-title">Upload Books</span>
+                        <i data-lucide="folder-plus"></i>
+                    </div>
+                    <div class="card-body">
+                        <div id="dropzone" class="dropzone">
+                            <input type="file" id="fileInput" multiple accept=".epub,.pdf,.txt" style="display: none;">
+                            <i data-lucide="cloud-upload" class="upload-icon"></i>
+                            <h3>Drag & Drop Books here</h3>
+                            <p>Supports EPUB, PDF, and TXT formats</p>
+                            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Browse Files</button>
+                        </div>
+                        
+                        <!-- Uploading Queue/Progress -->
+                        <div id="upload-progress-list" class="upload-progress-list"></div>
+                    </div>
+                </section>
+
+                <!-- System Controls -->
+                <section class="telemetry-card actions-card">
+                    <div class="card-header">
+                        <span class="card-title">System Controls</span>
+                        <i data-lucide="sliders"></i>
+                    </div>
+                    <div class="card-body action-buttons">
+                        <button class="btn btn-danger" onclick="rebootSystem()" id="reboot-btn">
+                            <i data-lucide="power"></i> Reboot Tablet
+                        </button>
+                        <button class="btn btn-secondary" onclick="fetchStatus()" title="Force Refresh Telemetry">
+                            <i data-lucide="refresh-cw"></i> Refresh Status
+                        </button>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- Right Panel: E-book Library Shelf -->
+            <div class="dashboard-column library-column">
+                <section class="telemetry-card library-card">
+                    <div class="card-header">
+                        <div class="title-with-count">
+                            <span class="card-title">My Library</span>
+                            <span class="badge" id="book-count">0 Books</span>
+                        </div>
+                        <button class="btn btn-secondary" onclick="fetchBooks()" title="Refresh List">
+                            <i data-lucide="refresh-cw" class="icon-small"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="bookshelf-grid" class="bookshelf-grid">
+                            <!-- Books loaded dynamically -->
+                            <div class="empty-shelf">
+                                <i data-lucide="book-open" class="empty-icon"></i>
+                                <p>No books uploaded yet. Drop a book to sync it to the Radxa!</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- System Logs Console -->
+                <section class="telemetry-card logs-card">
+                    <div class="card-header">
+                        <div class="title-with-count">
+                            <span class="card-title">System Logs</span>
+                            <span class="badge" id="log-count">Live</span>
+                        </div>
+                        <div class="log-controls">
+                            <select id="log-unit-select" onchange="fetchLogs()" class="log-select">
+                                <option value="">All Logs</option>
+                                <option value="tablet-client">Tablet Client</option>
+                                <option value="systemd">Systemd</option>
+                            </select>
+                            <button class="btn btn-secondary btn-icon-only" onclick="fetchLogs()" title="Refresh Logs">
+                                <i data-lucide="refresh-cw" class="icon-small"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="console-wrapper">
+                            <pre id="log-console" class="console-output">Loading system logs...</pre>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- JavaScript logic -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Elements
+        const vpnStatus = document.getElementById('vpn-status');
+        const vpnText = document.getElementById('vpn-text');
+        const batteryVal = document.getElementById('battery-val');
+        const batterySub = document.getElementById('battery-sub');
+        const batteryIcon = document.getElementById('battery-icon');
+        const tempVal = document.getElementById('temp-val');
+        const storageUsedPercent = document.getElementById('storage-used-percent');
+        const storageFreeVal = document.getElementById('storage-free-val');
+        const storageTotalVal = document.getElementById('storage-total-val');
+        const storageProgress = document.getElementById('storage-progress');
+        const bookCountBadge = document.getElementById('book-count');
+        const bookshelfGrid = document.getElementById('bookshelf-grid');
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadProgressList = document.getElementById('upload-progress-list');
+
+        // Show toast alert
+        function showToast(message, type = 'info') {
+            const toastContainer = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            let iconName = 'info';
+            if (type === 'success') iconName = 'check-circle';
+            if (type === 'error') iconName = 'alert-triangle';
+
+            toast.innerHTML = `
+                <i data-lucide="${iconName}"></i>
+                <span>${message}</span>
+            `;
+            
+            toastContainer.appendChild(toast);
+            lucide.createIcons({attrs: {'class': 'toast-icon'}});
+
+            // Animate entrance
+            setTimeout(() => toast.classList.add('show'), 10);
+
+            // Remove toast after 3.5s
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 400);
+            }, 3500);
+        }
+
+        // Fetch System Telemetry
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (!res.ok) throw new Error("HTTP error");
+                const data = await res.json();
+                
+                // Update VPN
+                if (data.wireguard_connected) {
+                    vpnStatus.className = "status-badge connected";
+                    vpnText.textContent = "WireGuard: Connected";
+                } else {
+                    vpnStatus.className = "status-badge disconnected";
+                    vpnText.textContent = "WireGuard: Disconnected";
+                }
+
+                // Update Battery
+                if (data.battery >= 0) {
+                    batteryVal.textContent = `${data.battery}%`;
+                    batterySub.textContent = "Capacity remaining";
+                    if (data.battery > 80) batteryIcon.setAttribute('data-lucide', 'battery');
+                    else if (data.battery > 50) batteryIcon.setAttribute('data-lucide', 'battery-medium');
+                    else if (data.battery > 20) batteryIcon.setAttribute('data-lucide', 'battery-low');
+                    else batteryIcon.setAttribute('data-lucide', 'battery-warning');
+                } else {
+                    batteryVal.textContent = "AC";
+                    batterySub.textContent = "Connected to Mains";
+                    batteryIcon.setAttribute('data-lucide', 'plug');
+                }
+
+                // Update Temp
+                if (data.cpu_temp > 0) {
+                    tempVal.textContent = `${data.cpu_temp}°C`;
+                } else {
+                    tempVal.textContent = "--";
+                }
+
+                // Update Storage
+                storageUsedPercent.textContent = `${data.storage_used_percent}% Used`;
+                storageFreeVal.textContent = `${data.storage_free} free`;
+                storageTotalVal.textContent = `Total Capacity: ${data.storage_total}`;
+                storageProgress.style.width = `${data.storage_used_percent}%`;
+
+                // Update icons in case battery changed
+                lucide.createIcons();
+
+            } catch (err) {
+                console.error("Failed to fetch system status:", err);
+            }
+        }
+
+        // Fetch Books List
+        async function fetchBooks() {
+            try {
+                const res = await fetch('/api/books');
+                if (!res.ok) throw new Error("HTTP error");
+                const books = await res.json();
+                
+                bookCountBadge.textContent = `${books.length} Book${books.length === 1 ? '' : 's'}`;
+
+                if (books.length === 0) {
+                    bookshelfGrid.innerHTML = `
+                        <div class="empty-shelf">
+                            <i data-lucide="book-open" class="empty-icon"></i>
+                            <p>No books uploaded yet. Drop a book to sync it to the Radxa!</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                bookshelfGrid.innerHTML = books.map(book => {
+                    const ext = book.name.split('.').pop().toLowerCase();
+                    let cardClass = "book-card-epub";
+                    let extLabel = "EPUB";
+                    if (ext === 'pdf') {
+                        cardClass = "book-card-pdf";
+                        extLabel = "PDF";
+                    } else if (ext === 'txt') {
+                        cardClass = "book-card-txt";
+                        extLabel = "TXT";
+                    }
+
+                    return `
+                        <div class="book-card ${cardClass}">
+                            <button class="delete-btn" onclick="deleteBook('${encodeURIComponent(book.name)}')" title="Delete book">
+                                <i data-lucide="trash-2"></i>
+                            </button>
+                            <div class="book-cover">
+                                <span class="format-badge">${extLabel}</span>
+                                <i data-lucide="book" class="cover-icon"></i>
+                            </div>
+                            <div class="book-info">
+                                <h4 class="book-title" title="${book.name}">${book.name}</h4>
+                                <div class="book-meta">
+                                    <span>${book.size}</span>
+                                    <span>${book.uploaded.split(' ')[0]}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                lucide.createIcons();
+            } catch (err) {
+                console.error("Failed to fetch library bookshelf:", err);
+                showToast("Failed to refresh library", "error");
+            }
+        }
+
+        // Delete a book
+        async function deleteBook(filename) {
+            if (!confirm(`Are you sure you want to delete this book?`)) return;
+
+            try {
+                const res = await fetch(`/api/books/${filename}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error("HTTP Delete error");
+                
+                showToast("Book deleted successfully", "success");
+                fetchBooks();
+                fetchStatus(); // Refresh storage values
+            } catch (err) {
+                console.error("Delete failed:", err);
+                showToast("Failed to delete book", "error");
+            }
+        }
+
+        // Reboot the Radxa Tablet
+        async function rebootSystem() {
+            if (!confirm("Are you sure you want to reboot the Radxa tablet? This will temporarily disconnect your dashboard.")) {
+                return;
+            }
+            
+            const rebootBtn = document.getElementById('reboot-btn');
+            const originalText = rebootBtn.innerHTML;
+            rebootBtn.disabled = true;
+            rebootBtn.innerHTML = `<i data-lucide="loader" class="animate-spin"></i> Rebooting...`;
+            lucide.createIcons();
+            
+            try {
+                const res = await fetch('/api/reboot', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast("Reboot command sent successfully! Reconnecting in 15 seconds...", "success");
+                    stopPolling();
+                    setTimeout(checkReconnection, 10000);
+                } else {
+                    throw new Error(data.error || "Failed to reboot");
+                }
+            } catch (err) {
+                console.error("Reboot failed:", err);
+                showToast(`Reboot failed: ${err.message}`, "error");
+                rebootBtn.disabled = false;
+                rebootBtn.innerHTML = originalText;
+                lucide.createIcons();
+            }
+        }
+
+        async function checkReconnection() {
+            showToast("Attempting to reconnect to Radxa...", "info");
+            let retries = 15;
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/status');
+                    if (res.ok) {
+                        clearInterval(interval);
+                        showToast("Reconnected to Radxa tablet!", "success");
+                        const rebootBtn = document.getElementById('reboot-btn');
+                        rebootBtn.disabled = false;
+                        rebootBtn.innerHTML = `<i data-lucide="power"></i> Reboot Tablet`;
+                        lucide.createIcons();
+                        startPolling();
+                    }
+                } catch (e) {
+                    retries--;
+                    if (retries <= 0) {
+                        clearInterval(interval);
+                        showToast("Reconnection timed out. Please refresh the page manually once the tablet has booted.", "error");
+                        const rebootBtn = document.getElementById('reboot-btn');
+                        rebootBtn.disabled = false;
+                        rebootBtn.innerHTML = `<i data-lucide="power"></i> Reboot Tablet`;
+                        lucide.createIcons();
+                    }
+                }
+            }, 3000);
+        }
+
+        // Fetch System Logs
+        async function fetchLogs() {
+            const logConsole = document.getElementById('log-console');
+            const unit = document.getElementById('log-unit-select').value;
+            
+            try {
+                const url = unit ? `/api/logs?unit=${encodeURIComponent(unit)}` : '/api/logs';
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("Failed to fetch logs");
+                const data = await res.json();
+                
+                logConsole.textContent = data.logs || "No logs returned from system.";
+                // Auto scroll to bottom of logs
+                logConsole.scrollTop = logConsole.scrollHeight;
+            } catch (err) {
+                console.error("Failed to fetch logs:", err);
+                logConsole.textContent = "Error loading system logs.";
+            }
+        }
+
+        // Upload single file
+        function uploadFile(file) {
+            const fileId = 'up-' + Math.random().toString(36).substring(2, 9);
+            
+            // Create progress indicator item
+            const progressItem = document.createElement('div');
+            progressItem.className = 'upload-progress-item';
+            progressItem.id = fileId;
+            progressItem.innerHTML = `
+                <div class="upload-progress-details">
+                    <span class="file-name-lbl" title="${file.name}">${file.name}</span>
+                    <span class="percent-lbl">0%</span>
+                </div>
+                <div class="upload-progress-track">
+                    <div class="upload-progress-fill" style="width: 0%"></div>
+                </div>
+            `;
+            uploadProgressList.appendChild(progressItem);
+
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            formData.append('file', file);
+
+            xhr.open('POST', '/api/upload', true);
+
+            // Progress tracking
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    const item = document.getElementById(fileId);
+                    if (item) {
+                        item.querySelector('.percent-lbl').textContent = `${percent}%`;
+                        item.querySelector('.upload-progress-fill').style.width = `${percent}%`;
+                    }
+                }
+            };
+
+            // Finished handler
+            xhr.onload = function() {
+                const item = document.getElementById(fileId);
+                if (xhr.status === 200) {
+                    const res = JSON.parse(xhr.responseText);
+                    if (res.success) {
+                        showToast(`"${file.name}" uploaded successfully`, "success");
+                        if (item) item.remove();
+                        fetchBooks();
+                        fetchStatus(); // Update storage usage info
+                    } else {
+                        showToast(res.error || "Upload failed", "error");
+                        if (item) item.classList.add('failed');
+                    }
+                } else {
+                    let errMsg = "Server upload error";
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        errMsg = res.error || errMsg;
+                    } catch(e) {}
+                    showToast(errMsg, "error");
+                    if (item) item.classList.add('failed');
+                }
+            };
+
+            xhr.onerror = function() {
+                showToast("Network upload error", "error");
+                const item = document.getElementById(fileId);
+                if (item) item.classList.add('failed');
+            };
+
+            xhr.send(formData);
+        }
+
+        // Drag & Drop event bindings
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.add('hover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('hover');
+            }, false);
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                Array.from(files).forEach(uploadFile);
+            }
+        }, false);
+
+        fileInput.addEventListener('change', () => {
+            const files = fileInput.files;
+            if (files.length > 0) {
+                Array.from(files).forEach(uploadFile);
+            }
+        });
+
+        // Visibility-aware Polling to minimize resource usage on Radxa
+        let statusInterval = null;
+        let booksInterval = null;
+        let logsInterval = null;
+
+        function startPolling() {
+            if (!statusInterval) {
+                fetchStatus();
+                statusInterval = setInterval(fetchStatus, 10000); // Poll status every 10 seconds is plenty
+            }
+            if (!booksInterval) {
+                fetchBooks();
+                booksInterval = setInterval(fetchBooks, 30000); // Refresh booklist every 30 seconds
+            }
+            if (!logsInterval) {
+                fetchLogs();
+                logsInterval = setInterval(fetchLogs, 15000); // Poll logs every 15 seconds
+            }
+        }
+
+        function stopPolling() {
+            clearInterval(statusInterval);
+            clearInterval(booksInterval);
+            clearInterval(logsInterval);
+            statusInterval = null;
+            booksInterval = null;
+            logsInterval = null;
+        }
+
+        // Start polling initially
+        startPolling();
+
+        // Pause polling when browser tab goes background to save Radxa CPU/Network
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopPolling();
+            } else {
+                startPolling();
+            }
+        });
+
+    </script>
+</body>
+</html>

@@ -45,7 +45,9 @@ private:
     void wait_until_idle();
 
     // Full screen refresh
-    void refresh_full();
+    void refresh_full(const uint8_t *buffer);
     // Partial screen refresh
-    void refresh_partial(int x, int y, int w, int h);
+    void refresh_partial(int x_start, int y_start, const uint8_t *buffer, int part_w, int part_h);
+
+    bool first_refresh;
 };

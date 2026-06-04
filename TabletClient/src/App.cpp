@@ -829,7 +829,7 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
   }
 
   std::thread([user_prompt, exact_match, use_reviews, books_snapshot]() {
-    httplib::Client cli("127.0.0.1", 8000);
+    httplib::Client cli("10.8.0.1", 8000); // Connect to laptop over WireGuard
     cli.set_connection_timeout(5, 0);   // 5 seconds to connect
     cli.set_read_timeout(60, 0);        // 60 seconds max for semantic search and downloading covers
 
@@ -853,7 +853,7 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
       if (res->status == 200) {
         try {
             json response = json::parse(res->body);
-            httplib::Client proxy_cli("127.0.0.1", 8000); // separate client for proxy calls
+            httplib::Client proxy_cli("10.8.0.1", 8000); // separate client for proxy calls
             
             if (response.contains("recommendations") && response["recommendations"].is_array()) {
                 for (auto &item : response["recommendations"]) {

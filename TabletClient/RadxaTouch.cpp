@@ -40,12 +40,30 @@ bool RadxaTouch::init_gpio() {
 }
 
 void RadxaTouch::reset_controller() {
-    // Simple reset matching the working Python script:
-    // Just toggle RST low then high. Do NOT touch the INT pin.
-    // The GT911 will default to address 0x14.
+    // To select address 0x5D (0xBA) per GT911 spec, the INT pin must be held LOW during the reset sequence.
+    // We release and re-request INT as output to drive it LOW, reset RST, and release INT back to input.
+    if (line_int) {
+        gpiod_line_release(line_int);
+    }
+    line_int = gpiod_line_find(TOUCH_PIN_INT);
+    if (line_int) {
+        gpiod_line_request_output(line_int, "touch_int", 0);
+    }
+
     gpiod_line_set_value(line_rst, 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     gpiod_line_set_value(line_rst, 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    // Release INT line back to input mode for GT911 interrupt monitoring
+    if (line_int) {
+        gpiod_line_release(line_int);
+    }
+    line_int = gpiod_line_find(TOUCH_PIN_INT);
+    if (line_int) {
+        gpiod_line_request_input(line_int, "touch_int");
+    }
+
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
@@ -157,37 +175,27 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
         return;
     }
 
-    uint8_t status = 0;
-    g_touch_instance->read_reg(0x814E, &status, 1);
+    // Read 10 bytes starting from 0x814E (Buffer Status) in a single transaction.
+    // This matches the manufacturer's read sequence exactly and halves I2C overhead.
+    uint8_t point_data[10] = {0};
+    if (g_touch_instance->read_reg(0x814E, point_data, 10)) {
+        uint8_t status = point_data[0];
+        if (status & 0x80) { // Buffer status bit (1 = data ready)
+            int touch_count = status & 0x0F;
+            if (touch_count > 0 && touch_count <= 5) {
+                // point_data[0] = 0x814E (status)
+                // point_data[1] = 0x814F (Track ID)
+                // point_data[2] = 0x8150 (X LSB)
+                // point_data[3] = 0x8151 (X MSB)
+                // point_data[4] = 0x8152 (Y LSB)
+                // point_data[5] = 0x8153 (Y MSB)
+                int raw_x = point_data[2] | (point_data[3] << 8);
+                int raw_y = point_data[4] | (point_data[5] << 8);
 
-    if (status & 0x80) { // Buffer status bit (1 = data ready)
-        int touch_count = status & 0x0F;
-        if (touch_count > 0 && touch_count <= 5) {
-            // Read touch point data — 8 bytes per point
-            // GT911 format per point at 0x8150:
-            //   Byte 0: Track ID
-            //   Byte 1: X Low
-            //   Byte 2: X High
-            //   Byte 3: Y Low
-            //   Byte 4: Y High
-            //   Byte 5-7: Size + reserved
-            uint8_t point_data[8] = {0}; // Initialize to zero to prevent stack garbage
-            if (g_touch_instance->read_reg(0x8150, point_data, 8)) {
-                // Offset by 1 to skip Track ID
-                // The GT911 on this specific EPD hat has a highly scrambled byte order.
-                // Calibration from the 4-corner test reveals:
-                // point_data[1] = X LSB
-                // point_data[4] = X MSB
-                // point_data[3] = Y LSB
-                // point_data[2] = Y MSB
-                int x_actual = point_data[1] | (point_data[4] << 8);
-                int y_actual = point_data[3] | (point_data[2] << 8);
-
-                // The raw hardware grid is exactly 480x800.
-                // X=0 is Left, X=479 is Right.
-                // Y=0 is Bottom, Y=799 is Top.
-                int log_x = x_actual;
-                int log_y = 799 - y_actual;
+                // Standard GT911 coordinates are Landscape (800x480).
+                // Map to LVGL Logical Portrait (480x800).
+                int log_x = raw_y;
+                int log_y = 799 - raw_x;
 
                 // Clamp to prevent LVGL warnings if touching the absolute edges
                 if (log_x < 0) log_x = 0;
@@ -199,17 +207,19 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
                 g_touch_instance->last_y = log_y;
                 g_touch_instance->is_pressed = true;
 
-                std::cout << "Touch mapped: Hardware(" << x_actual << ", " << y_actual 
+                std::cout << "Touch mapped: Hardware(" << raw_x << ", " << raw_y 
                           << ") -> LVGL(" << log_x << ", " << log_y << ")" << std::endl;
+            } else {
+                g_touch_instance->is_pressed = false;
             }
+
+            // CRITICAL: Clear the status buffer so GT911 registers the next touch
+            g_touch_instance->write_reg(0x814E, 0x00);
         } else {
+            // No touch event pending
             g_touch_instance->is_pressed = false;
         }
-
-        // CRITICAL: Clear the status buffer so GT911 registers the next touch
-        g_touch_instance->write_reg(0x814E, 0x00);
     } else {
-        // No touch event pending
         g_touch_instance->is_pressed = false;
     }
 

@@ -455,6 +455,31 @@ static void jump_btn_cb(lv_event_t *e) {
       LV_EVENT_CLICKED, jd);
 }
 
+static void global_gesture_cb(lv_event_t *e) {
+  lv_obj_t *screen = lv_event_get_current_target(e);
+  lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+
+  if (screen == screen_book_reader) {
+    if (dir == LV_DIR_RIGHT) {
+      // Swipe to the right -> next page
+      reader_next_cb(nullptr);
+    } else if (dir == LV_DIR_LEFT) {
+      // Swipe to the left -> previous page
+      reader_prev_cb(nullptr);
+    }
+  } else if (screen == screen_library) {
+    if (dir == LV_DIR_RIGHT) {
+      // Swipe to the right -> go back to main screen
+      lv_scr_load(screen_main);
+    }
+  } else if (screen == screen_ai) {
+    if (dir == LV_DIR_RIGHT) {
+      // Swipe to the right -> go back to main screen
+      lv_scr_load(screen_main);
+    }
+  }
+}
+
 void build_tablet_ui() {
   checkAndClearCache();
   screen_main = lv_obj_create(NULL);

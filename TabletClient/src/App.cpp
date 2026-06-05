@@ -625,7 +625,7 @@ void build_tablet_ui() {
   lv_label_set_text(header_title, "Reader");
   lv_obj_set_style_text_color(header_title, lv_color_hex(0xFFFFFF), 0);
   // Use a large built-in font if available (montserrat_28/32 is typical)
-  lv_obj_set_style_text_font(header_title, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(header_title, &lv_font_montserrat_24, 0);
   lv_obj_align(header_title, LV_ALIGN_LEFT_MID, 10, 0);
 
   // Menu List Container
@@ -653,7 +653,7 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(row_author, load_screen_cb, LV_EVENT_PRESSED, screen_library);
 
   // Row 4: AI Assistant
-  lv_obj_t* row_ai = create_menu_row(list_cont, LV_SYMBOL_EYE, "AI Assistant", "Active");
+  lv_obj_t* row_ai = create_menu_row(list_cont, LV_SYMBOL_EDIT, "AI Assistant", "Active");
   lv_obj_add_event_cb(row_ai, load_screen_cb, LV_EVENT_PRESSED, screen_ai);
 
   // Row 5: Settings / Dashboard URL

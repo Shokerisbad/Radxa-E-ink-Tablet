@@ -92,18 +92,20 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_translate_y(btn, 0, LV_STATE_PRESSED);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, LV_STATE_PRESSED);
+    lv_obj_set_style_anim_duration(btn, 0, 0); // Disable state transition animations
     lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
     return btn;
 }
 
 
 static lv_obj_t * create_white_container(lv_obj_t * parent) {
-    lv_obj_t * obj = lv_obj_create(parent);
-    lv_obj_set_style_bg_color(obj, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_color(obj, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-    return obj;
+    lv_obj_t * cont = lv_obj_create(parent);
+    lv_obj_set_style_bg_color(cont, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(cont, 0, 0);
+    lv_obj_set_style_radius(cont, 0, 0);
+    lv_obj_set_style_pad_all(cont, 0, 0);
+    lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_OFF); // Disable scrollbar fade animations
+    return cont;
 }
 
 // --- PRS-505 MENU ROW HELPER ---
@@ -569,9 +571,20 @@ static void global_gesture_cb(lv_event_t *e) {
 void build_tablet_ui() {
   checkAndClearCache();
   screen_main = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_scrollbar_mode(screen_main, LV_SCROLLBAR_MODE_OFF);
+
   screen_library = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(screen_library, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_scrollbar_mode(screen_library, LV_SCROLLBAR_MODE_OFF);
+
   screen_book_reader = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(screen_book_reader, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_scrollbar_mode(screen_book_reader, LV_SCROLLBAR_MODE_OFF);
+
   screen_ai = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(screen_ai, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_scrollbar_mode(screen_ai, LV_SCROLLBAR_MODE_OFF);
 
   // Apply white background to all screens
   lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
@@ -863,7 +876,7 @@ void build_tablet_ui() {
   lv_label_set_text(ai_lbl_up, "Page Up");
   lv_obj_add_event_cb(ai_btn_up, [](lv_event_t *e){
       lv_coord_t y = lv_obj_get_scroll_y(ai_content);
-      lv_coord_t new_y = std::max((lv_coord_t)0, (lv_coord_t)(y - 540));
+      lv_coord_t new_y = std::max((lv_coord_t)0, (lv_coord_t)(y - 500)); // Scroll slightly less than full height for overlap
       lv_obj_scroll_to_y(ai_content, new_y, LV_ANIM_OFF);
       lv_obj_invalidate(screen_ai);
   }, LV_EVENT_PRESSED, NULL);
@@ -873,7 +886,7 @@ void build_tablet_ui() {
   lv_label_set_text(ai_lbl_down, "Page Down");
   lv_obj_add_event_cb(ai_btn_down, [](lv_event_t *e){
       lv_coord_t y = lv_obj_get_scroll_y(ai_content);
-      lv_obj_scroll_to_y(ai_content, y + 540, LV_ANIM_OFF);
+      lv_obj_scroll_to_y(ai_content, y + 500, LV_ANIM_OFF); // Scroll slightly less than full height for overlap
       lv_obj_invalidate(screen_ai);
   }, LV_EVENT_PRESSED, NULL);
 

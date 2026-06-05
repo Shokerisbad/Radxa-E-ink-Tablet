@@ -237,7 +237,7 @@ void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, 
 
   // Partial settings from manufacturer reference
   send_command(0x50);
-  send_data(0x10); // Use 0x10 instead of 0xA9 to preserve data polarity (0=White)
+  send_data(0xA9); // Set VCOM to 0xA9 as required by the manufacturer's partial refresh sequence
   send_data(0x07);
 
   send_command(0x91); // Enter partial mode
@@ -254,7 +254,14 @@ void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, 
   send_data(0x01); // Scan parameter (0x01 = scan only partial area)
 
   send_command(0x13); // Write data to New SRAM
-  send_data_array(buffer, count);
+  
+  // Since 0xA9 has inverted data polarity (1=White, 0=Black) compared to 0x10 (0=White, 1=Black),
+  // we must bitwise-invert the buffer bytes before sending it to the controller.
+  std::vector<uint8_t> inverted_buffer(count);
+  for (size_t i = 0; i < count; ++i) {
+    inverted_buffer[i] = ~buffer[i];
+  }
+  send_data_array(inverted_buffer.data(), count);
 
   send_command(0x12); // Display Refresh
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -377,7 +384,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     int part_h = y_end - y_start + 1;
     size_t part_bytes = (part_w * part_h) / 8;
 
-    std::vector<uint8_t> part_buffer(part_bytes, 0xFF); // 0xFF is default white for partial LUT
+    std::vector<uint8_t> part_buffer(part_bytes, 0x00); // 0x00 is default white
 
 #if LV_COLOR_DEPTH == 32
     lv_color32_t *buf32 = (lv_color32_t *)px_map;
@@ -395,7 +402,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
           int phys_idx = py_offset * part_w + px_offset;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
-          part_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
+          part_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
         }
       }
     }
@@ -417,7 +424,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
           int phys_idx = py_offset * part_w + px_offset;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
-          part_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
+          part_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
         }
       }
     }

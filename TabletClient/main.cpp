@@ -12,7 +12,7 @@
 #include "src/App.h"
 #include <mutex>
 
-extern std::mutex lvgl_mutex;
+extern std::recursive_mutex lvgl_mutex;
 
 // Define display resolution
 // Logical resolution (portrait — how LVGL sees the screen)
@@ -199,7 +199,7 @@ int main(void) {
     while (g_running) {
         uint32_t sleep_ms;
         {
-            std::lock_guard<std::mutex> lock(lvgl_mutex);
+            std::lock_guard<std::recursive_mutex> lock(lvgl_mutex);
             sleep_ms = lv_timer_handler();
         }
         

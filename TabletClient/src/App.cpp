@@ -32,7 +32,7 @@
 
 using json = nlohmann::json;
 
-std::mutex lvgl_mutex;
+std::recursive_mutex lvgl_mutex;
 
 // --- IMAGE UTILITIES ---
 static void write_bmp_cover(const char* filename, int w, int h, int comp, const unsigned char* data) {
@@ -440,8 +440,11 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 40);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
+  lv_obj_set_style_anim_duration(kb, 0, LV_PART_ITEMS);
   lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transform_width(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transform_height(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_NUMBER);
   lv_keyboard_set_textarea(kb, ta);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -523,16 +526,20 @@ void build_tablet_ui() {
   screen_ai = lv_obj_create(NULL);
 
   // Apply white background to all screens
-lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(screen_main, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_text_color(screen_main, lv_color_black(), LV_PART_MAIN);
   
   lv_obj_set_style_bg_color(screen_library, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(screen_library, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_text_color(screen_library, lv_color_black(), LV_PART_MAIN);
   
   lv_obj_set_style_bg_color(screen_book_reader, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(screen_book_reader, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_text_color(screen_book_reader, lv_color_black(), LV_PART_MAIN);
   
   lv_obj_set_style_bg_color(screen_ai, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(screen_ai, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_text_color(screen_ai, lv_color_black(), LV_PART_MAIN);
 
   // Register gesture callbacks on screens and make them clickable
@@ -637,7 +644,8 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_set_size(reader_body, 480, 650); // 800 (display) - 30 (status_bar) - 60 (topbar) - 60 (bottombar)
   lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 90); // starts at y=90
-  lv_obj_set_style_bg_opa(reader_body, 0, 0);
+  lv_obj_set_style_bg_color(reader_body, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(reader_body, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(reader_body, 0, 0);
   lv_obj_remove_flag(reader_body, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_flex_flow(reader_body, LV_FLEX_FLOW_COLUMN);
@@ -730,6 +738,12 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_set_flex_grow(ai_input_ta, 1);
   lv_textarea_set_placeholder_text(ai_input_ta, "Ask for book recommendations...");
   
+  // Add visible borders so it doesn't blend into the background
+  lv_obj_set_style_border_width(ai_input_ta, 2, LV_PART_MAIN);
+  lv_obj_set_style_border_color(ai_input_ta, lv_color_hex(0x000000), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(ai_input_ta, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_text_color(ai_input_ta, lv_color_hex(0x000000), LV_PART_MAIN);
+
   // Disable blinking cursor to prevent infinite e-ink refresh loops!
   lv_obj_set_style_anim_duration(ai_input_ta, 0, LV_PART_CURSOR);
   lv_obj_set_style_opa(ai_input_ta, 0, LV_PART_CURSOR);
@@ -772,8 +786,11 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
 
   // Create keyboard but keep hidden
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);
+  lv_obj_set_style_anim_duration(ai_kb, 0, LV_PART_ITEMS);
   lv_obj_set_style_bg_color(ai_kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_text_color(ai_kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transform_width(ai_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transform_height(ai_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_keyboard_set_textarea(ai_kb, ai_input_ta);
   lv_obj_add_flag(ai_kb, LV_OBJ_FLAG_HIDDEN);
 
@@ -923,7 +940,7 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
   // Copy shared state under lock before entering background thread
   std::vector<FinishedBook> books_snapshot;
   {
-    std::lock_guard<std::mutex> lock(lvgl_mutex);
+    std::lock_guard<std::recursive_mutex> lock(lvgl_mutex);
     books_snapshot = locally_finished_books;
   }
 

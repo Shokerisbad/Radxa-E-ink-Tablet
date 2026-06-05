@@ -46,8 +46,6 @@ private:
     void send_data(uint8_t data);
     void send_data_array(const uint8_t* data, size_t len);
     void wait_until_idle();
-
-    void wait_until_idle();
     // Partial screen refresh
     void refresh_partial(int x_start, int y_start, const uint8_t *buffer, int part_w, int part_h);
 

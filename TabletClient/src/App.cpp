@@ -282,6 +282,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
 }
 
 static void update_reader_ui() {
+  lv_obj_invalidate(screen_book_reader); // Force single unified redraw for page and counter
   std::string text;
   if (is_epub_active && current_epub) {
     lv_label_set_text(reader_title_label, current_epub->getTitle().c_str());
@@ -795,7 +796,7 @@ void build_tablet_ui() {
   ai_content = create_white_container(screen_ai);
   lv_obj_set_scroll_dir(ai_content, LV_DIR_VER);
   lv_obj_add_event_cb(ai_content, global_gesture_cb, LV_EVENT_GESTURE, NULL);
-  lv_obj_set_size(ai_content, 460, 600); // Expanded default size
+  lv_obj_set_size(ai_content, 460, 540); // Shrunk to leave room for bottombar
   lv_obj_align(ai_content, LV_ALIGN_TOP_MID, 0, 170); // Shifted down
   lv_obj_set_flex_flow(ai_content, LV_FLEX_FLOW_COLUMN);
 
@@ -849,6 +850,32 @@ void build_tablet_ui() {
   lv_obj_t *ai_search_lbl = lv_label_create(ai_search_btn);
   lv_label_set_text(ai_search_lbl, "Search");
   lv_obj_center(ai_search_lbl);
+
+  // AI Bottom Pagination Bar
+  lv_obj_t *ai_bottombar = create_white_container(screen_ai);
+  lv_obj_set_size(ai_bottombar, LV_PCT(100), 60);
+  lv_obj_align(ai_bottombar, LV_ALIGN_BOTTOM_MID, 0, -10);
+  lv_obj_set_flex_flow(ai_bottombar, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(ai_bottombar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *ai_btn_up = create_styled_btn(ai_bottombar);
+  lv_obj_t *ai_lbl_up = lv_label_create(ai_btn_up);
+  lv_label_set_text(ai_lbl_up, "Page Up");
+  lv_obj_add_event_cb(ai_btn_up, [](lv_event_t *e){
+      lv_coord_t y = lv_obj_get_scroll_y(ai_content);
+      lv_coord_t new_y = std::max((lv_coord_t)0, (lv_coord_t)(y - 540));
+      lv_obj_scroll_to_y(ai_content, new_y, LV_ANIM_OFF);
+      lv_obj_invalidate(screen_ai);
+  }, LV_EVENT_PRESSED, NULL);
+
+  lv_obj_t *ai_btn_down = create_styled_btn(ai_bottombar);
+  lv_obj_t *ai_lbl_down = lv_label_create(ai_btn_down);
+  lv_label_set_text(ai_lbl_down, "Page Down");
+  lv_obj_add_event_cb(ai_btn_down, [](lv_event_t *e){
+      lv_coord_t y = lv_obj_get_scroll_y(ai_content);
+      lv_obj_scroll_to_y(ai_content, y + 540, LV_ANIM_OFF);
+      lv_obj_invalidate(screen_ai);
+  }, LV_EVENT_PRESSED, NULL);
 
   // Create keyboard but keep hidden
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);

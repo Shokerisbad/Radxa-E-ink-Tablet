@@ -288,9 +288,17 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   int w = area->x2 - area->x1 + 1;
   int h = area->y2 - area->y1 + 1;
 
+  static int partial_refresh_count = 0;
+
   // Decide if we should do a full refresh or partial refresh
-  // Full refresh is used for the first draw or large changes (> 40% screen area)
-  bool is_full = g_epd_instance->first_refresh || (w * h > 150000);
+  // We allow full screen partial refreshes for smooth page turning.
+  // Force a full refresh every 6 updates to clear E-ink ghosting.
+  bool is_full = g_epd_instance->first_refresh;
+  
+  if (partial_refresh_count >= 5) {
+      is_full = true;
+      partial_refresh_count = 0;
+  }
 
   if (is_full) {
     g_epd_instance->first_refresh = false;
@@ -369,7 +377,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     int part_h = y_end - y_start + 1;
     size_t part_bytes = (part_w * part_h) / 8;
 
-    std::vector<uint8_t> part_buffer(part_bytes, 0x00); // default white
+    std::vector<uint8_t> part_buffer(part_bytes, 0xFF); // 0xFF is default white for partial LUT
 
 #if LV_COLOR_DEPTH == 32
     lv_color32_t *buf32 = (lv_color32_t *)px_map;
@@ -387,7 +395,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
           int phys_idx = py_offset * part_w + px_offset;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
-          part_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+          part_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
         }
       }
     }
@@ -409,7 +417,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
           int phys_idx = py_offset * part_w + px_offset;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
-          part_buffer[byte_idx] |= (1 << bit_idx); // SET bit = black
+          part_buffer[byte_idx] &= ~(1 << bit_idx); // CLEAR bit = black
         }
       }
     }
@@ -459,6 +467,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
             std::cout << "Refreshing display (PARTIAL BATCHED: x=" << s_min_x << ", y=" << s_min_y
                       << ", w=" << final_w << ", h=" << final_h << ")..." << std::endl;
             g_epd_instance->refresh_partial(s_min_x, s_min_y, final_buf.data(), final_w, final_h);
+            partial_refresh_count++; // Increment only when we physically update the E-ink panel
         }
         
         s_min_x = 800; s_min_y = 480; s_max_x = -1; s_max_y = -1;

@@ -215,8 +215,8 @@ void RadxaEPD::wake() {
 void RadxaEPD::refresh_full(const uint8_t *buffer) {
   const size_t frame_bytes = (800 * 480) / 8; // 48000 bytes
 
-  // Write black (0xFF) to OLD buffer (0x10) to force the panel to drive to the NEW buffer
-  std::vector<uint8_t> old_buf(frame_bytes, 0xFF);
+  // Write white (0x00) to OLD buffer (0x10) — panel polarity: 0x00 = white
+  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
   send_command(0x10);
   send_data_array(old_buf.data(), frame_bytes);
 
@@ -237,7 +237,7 @@ void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, 
 
   // Partial settings from manufacturer reference
   send_command(0x50);
-  send_data(0xA9);
+  send_data(0x10); // Use 0x10 instead of 0xA9 to preserve data polarity (0=White)
   send_data(0x07);
 
   send_command(0x91); // Enter partial mode
@@ -261,6 +261,11 @@ void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, 
   wait_until_idle();
 
   send_command(0x92); // Exit partial mode
+  
+  // Restore VCOM and Data Interval Setting to defaults just in case
+  send_command(0x50);
+  send_data(0x10);
+  send_data(0x07);
 }
 
 static std::vector<uint8_t> g_last_frame(48000, 0x00);

@@ -55,6 +55,8 @@ static void write_bmp(const char *filename, int w, int h, int comp, int stride,
       fputc(0, f);
   }
   fclose(f);
+  
+  std::cout << "[PDF] Wrote BMP " << filename << " (" << w << "x" << h << ", comp=" << comp << ", stride=" << stride << ")" << std::endl;
 }
 
 PdfHandler::PdfHandler()

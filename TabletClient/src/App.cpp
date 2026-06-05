@@ -1025,7 +1025,8 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
         ip_file.close();
     }
     
-    std::cout << "Connecting to LLM API at: " << target_ip << ":8000" << std::endl;
+    std::cout << "[AI] Read Dashboard IP: " << target_ip << std::endl;
+    std::cout << "[AI] Connecting to LLM API at: " << target_ip << ":8000" << std::endl;
     httplib::Client cli(target_ip, 8000); 
     cli.set_connection_timeout(5, 0);   
     cli.set_read_timeout(60, 0);        
@@ -1045,8 +1046,10 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
     }
     payload["finished_books"] = fin_books;
 
-    std::cout << "Sending AI request..." << std::endl;
-    if (auto res = cli.Post("/api/recommend", payload.dump(), "application/json")) {
+    std::string dump = payload.dump();
+    std::cout << "[AI] Sending POST /api/recommend" << std::endl;
+    std::cout << "[AI] Payload: " << dump << std::endl;
+    if (auto res = cli.Post("/api/recommend", dump, "application/json")) {
       if (res->status == 200) {
         try {
             json response = json::parse(res->body);

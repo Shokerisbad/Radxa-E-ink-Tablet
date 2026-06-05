@@ -6,6 +6,9 @@
 #include <ws2tcpip.h>
 #include <Windows.h>
 #endif
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include "App.h"
 #include "lvgl/lvgl.h"
@@ -567,10 +570,29 @@ lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_t *btn_ai = create_styled_btn(screen_main);
   lv_obj_align(btn_ai, LV_ALIGN_CENTER, 0, 30);
   lv_obj_set_size(btn_ai, 200, 50);
-    lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_PRESSED, screen_ai);
+  lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_PRESSED, screen_ai);
   lv_obj_t *lbl_ai = lv_label_create(btn_ai);
   lv_label_set_text(lbl_ai, "AI Assistant");
-    lv_obj_center(lbl_ai);
+  lv_obj_center(lbl_ai);
+
+  // Dashboard Info Button
+  lv_obj_t *btn_dash = create_styled_btn(screen_main);
+  lv_obj_align(btn_dash, LV_ALIGN_CENTER, 0, 110);
+  lv_obj_set_size(btn_dash, 250, 50);
+  // Remove press state animations/color changes so it acts like a display label
+  lv_obj_remove_flag(btn_dash, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_t *lbl_dash = lv_label_create(btn_dash);
+  
+  char hostname[256];
+  if (gethostname(hostname, sizeof(hostname)) == 0) {
+      std::string dash_url = "Dashboard:\nhttp://" + std::string(hostname) + ".local:8080";
+      lv_label_set_text(lbl_dash, dash_url.c_str());
+  } else {
+      lv_label_set_text(lbl_dash, "Dashboard:\nhttp://radxa-zero.local:8080");
+  }
+  lv_label_set_long_mode(lbl_dash, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(lbl_dash, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_center(lbl_dash);
 
   // --- LIBRARY SCREEN ---
   lv_obj_t *lib_title = lv_label_create(screen_library);
@@ -906,9 +928,24 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
   }
 
   std::thread([user_prompt, exact_match, use_reviews, books_snapshot]() {
-    httplib::Client cli("10.8.0.1", 8000); // Connect to laptop over WireGuard
-    cli.set_connection_timeout(5, 0);   // 5 seconds to connect
-    cli.set_read_timeout(60, 0);        // 60 seconds max for semantic search and downloading covers
+    std::string target_ip = "10.8.0.1";
+    std::ifstream ip_file("llm_ip.txt");
+    if (ip_file.is_open()) {
+        std::string ip;
+        if (std::getline(ip_file, ip)) {
+            // Strip any whitespace
+            ip.erase(std::remove_if(ip.begin(), ip.end(), ::isspace), ip.end());
+            if (!ip.empty()) {
+                target_ip = ip;
+            }
+        }
+        ip_file.close();
+    }
+    
+    std::cout << "Connecting to LLM API at: " << target_ip << ":8000" << std::endl;
+    httplib::Client cli(target_ip, 8000); 
+    cli.set_connection_timeout(5, 0);   
+    cli.set_read_timeout(60, 0);        
 
     json payload = {{"user_profile", user_prompt},
                     {"session_history", json::array()},
@@ -930,7 +967,7 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
       if (res->status == 200) {
         try {
             json response = json::parse(res->body);
-            httplib::Client proxy_cli("10.8.0.1", 8000); // separate client for proxy calls
+            httplib::Client proxy_cli(target_ip, 8000); // separate client for proxy calls
             
             if (response.contains("recommendations") && response["recommendations"].is_array()) {
                 for (auto &item : response["recommendations"]) {

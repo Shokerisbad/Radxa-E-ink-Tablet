@@ -147,6 +147,21 @@ def delete_book(filename):
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
+    client_ip = request.remote_addr
+    if client_ip:
+        llm_ip_path = os.path.abspath(os.path.join(BOOKS_DIR, '..', 'llm_ip.txt'))
+        try:
+            current_ip = ""
+            if os.path.exists(llm_ip_path):
+                with open(llm_ip_path, 'r') as f:
+                    current_ip = f.read().strip()
+            if current_ip != client_ip:
+                with open(llm_ip_path, 'w') as f:
+                    f.write(client_ip)
+                print(f"[Dashboard] Automatically registered LLM API Server IP: {client_ip}")
+        except Exception as e:
+            print(f"[Dashboard] Error writing LLM IP: {e}")
+
     total, used, free = shutil.disk_usage(BOOKS_DIR)
     return jsonify({
         "battery": get_battery_percentage(),

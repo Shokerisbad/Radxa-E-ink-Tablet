@@ -22,6 +22,9 @@ public:
     // Wakes up / re-initializes the display
     void wake();
 
+    // Full screen refresh
+    void refresh_full(const uint8_t *buffer);
+
     // System Status Checkers
     static int get_battery_percentage();
     static bool is_wifi_connected();
@@ -44,8 +47,7 @@ private:
     void send_data_array(const uint8_t* data, size_t len);
     void wait_until_idle();
 
-    // Full screen refresh
-    void refresh_full(const uint8_t *buffer);
+    void wait_until_idle();
     // Partial screen refresh
     void refresh_partial(int x_start, int y_start, const uint8_t *buffer, int part_w, int part_h);
 

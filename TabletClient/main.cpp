@@ -211,6 +211,11 @@ int main(void) {
     }
 
     std::cout << "Putting display to sleep and exiting...\n";
+    
+    // Clear screen to white gracefully before shutting down
+    std::vector<uint8_t> white_buf(PHYS_WIDTH * PHYS_HEIGHT / 8, 0x00); // 0x00 is white in this driver
+    epd.refresh_full(white_buf.data());
+    
     epd.sleep();
  
     // Terminate spawned Web Dashboard server

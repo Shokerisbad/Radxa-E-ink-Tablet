@@ -105,6 +105,52 @@ static lv_obj_t * create_white_container(lv_obj_t * parent) {
     lv_obj_set_style_border_width(obj, 0, 0);
     return obj;
 }
+
+// --- PRS-505 MENU ROW HELPER ---
+static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char* title, const char* subtitle) {
+  lv_obj_t* row = lv_btn_create(parent);
+  lv_obj_set_size(row, LV_PCT(100), 65); // Full width
+  lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+  
+  // Only bottom border to act as a separator
+  lv_obj_set_style_border_width(row, 0, 0);
+  lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
+  lv_obj_set_style_border_width(row, 2, 0); 
+  lv_obj_set_style_border_color(row, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_radius(row, 0, 0);
+  
+  // Remove padding so elements can align properly
+  lv_obj_set_style_pad_all(row, 10, 0);
+
+  // Left Icon
+  lv_obj_t* lbl_icon = lv_label_create(row);
+  lv_label_set_text(lbl_icon, icon);
+  lv_obj_align(lbl_icon, LV_ALIGN_LEFT_MID, 10, 0);
+
+  // Title
+  lv_obj_t* lbl_title = lv_label_create(row);
+  lv_label_set_text(lbl_title, title);
+  lv_obj_align_to(lbl_title, lbl_icon, LV_ALIGN_OUT_RIGHT_MID, 20, 0);
+
+  // Subtitle
+  if (subtitle && strlen(subtitle) > 0) {
+    lv_obj_t* lbl_sub = lv_label_create(row);
+    lv_label_set_text(lbl_sub, subtitle);
+    lv_obj_align(lbl_sub, LV_ALIGN_RIGHT_MID, -10, 0);
+  }
+
+  // Disable pressed animations to prevent e-ink ghosting/double refresh
+  lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+  lv_obj_set_style_transform_width(row, 0, LV_STATE_PRESSED);
+  lv_obj_set_style_transform_height(row, 0, LV_STATE_PRESSED);
+  lv_obj_set_style_translate_y(row, 0, LV_STATE_PRESSED);
+  lv_obj_set_style_shadow_width(row, 0, LV_STATE_PRESSED);
+  lv_obj_remove_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
+
+  return row;
+}
+
 // --- CACHE MANAGEMENT ---
 static void checkAndClearCache() {
 
@@ -561,45 +607,63 @@ void build_tablet_ui() {
                       NULL);
 
   // --- MAIN SCREEN ---
-  lv_obj_t *main_title = lv_label_create(screen_main);
-  lv_label_set_text(main_title, "E-Ink Reader Home");
-  lv_obj_align(main_title, LV_ALIGN_TOP_MID, 0, 50);
+  lv_obj_set_flex_flow(screen_main, LV_FLEX_FLOW_COLUMN);
+  // Clear pad so header goes perfectly to the edges
+  lv_obj_set_style_pad_all(screen_main, 0, 0);
+  lv_obj_set_style_pad_row(screen_main, 0, 0);
 
-  lv_obj_t *btn_lib = create_styled_btn(screen_main);
-  lv_obj_align(btn_lib, LV_ALIGN_CENTER, 0, -50);
-  lv_obj_set_size(btn_lib, 200, 50);
-    lv_obj_add_event_cb(btn_lib, load_screen_cb, LV_EVENT_PRESSED,
-                      screen_library);
-  lv_obj_t *lbl_lib = lv_label_create(btn_lib);
-  lv_label_set_text(lbl_lib, "My Library");
-    lv_obj_center(lbl_lib);
+  // Black Header
+  lv_obj_t* header = lv_obj_create(screen_main);
+  lv_obj_set_size(header, LV_PCT(100), 70);
+  lv_obj_set_style_bg_color(header, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(header, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(header, 0, 0);
+  lv_obj_set_style_border_width(header, 0, 0);
+  lv_obj_set_style_pad_all(header, 10, 0); // Inner padding for text
 
-  lv_obj_t *btn_ai = create_styled_btn(screen_main);
-  lv_obj_align(btn_ai, LV_ALIGN_CENTER, 0, 30);
-  lv_obj_set_size(btn_ai, 200, 50);
-  lv_obj_add_event_cb(btn_ai, load_screen_cb, LV_EVENT_PRESSED, screen_ai);
-  lv_obj_t *lbl_ai = lv_label_create(btn_ai);
-  lv_label_set_text(lbl_ai, "AI Assistant");
-  lv_obj_center(lbl_ai);
+  lv_obj_t* header_title = lv_label_create(header);
+  lv_label_set_text(header_title, "Reader");
+  lv_obj_set_style_text_color(header_title, lv_color_hex(0xFFFFFF), 0);
+  // Use a large built-in font if available (montserrat_28/32 is typical)
+  lv_obj_set_style_text_font(header_title, &lv_font_montserrat_28, 0);
+  lv_obj_align(header_title, LV_ALIGN_LEFT_MID, 10, 0);
 
-  // Dashboard Info Button
-  lv_obj_t *btn_dash = create_styled_btn(screen_main);
-  lv_obj_align(btn_dash, LV_ALIGN_CENTER, 0, 110);
-  lv_obj_set_size(btn_dash, 250, 50);
-  // Remove press state animations/color changes so it acts like a display label
-  lv_obj_remove_flag(btn_dash, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_t *lbl_dash = lv_label_create(btn_dash);
-  
+  // Menu List Container
+  lv_obj_t* list_cont = lv_obj_create(screen_main);
+  lv_obj_set_flex_grow(list_cont, 1); // Take remaining height
+  lv_obj_set_width(list_cont, LV_PCT(100));
+  lv_obj_set_style_bg_color(list_cont, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(list_cont, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(list_cont, 0, 0);
+  lv_obj_set_style_radius(list_cont, 0, 0);
+  lv_obj_set_style_pad_all(list_cont, 0, 0);
+  lv_obj_set_style_pad_row(list_cont, 0, 0);
+  lv_obj_set_flex_flow(list_cont, LV_FLEX_FLOW_COLUMN);
+
+  // Row 1: Continue Reading
+  lv_obj_t* row_continue = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", "No book");
+  lv_obj_add_event_cb(row_continue, load_screen_cb, LV_EVENT_PRESSED, screen_library); // Goes to lib for now
+
+  // Row 2: Books by Title
+  lv_obj_t* row_title = create_menu_row(list_cont, LV_SYMBOL_DIRECTORY, "Books by Title", "Library");
+  lv_obj_add_event_cb(row_title, load_screen_cb, LV_EVENT_PRESSED, screen_library);
+
+  // Row 3: Books by Author
+  lv_obj_t* row_author = create_menu_row(list_cont, LV_SYMBOL_IMAGE, "Books by Author", "Library");
+  lv_obj_add_event_cb(row_author, load_screen_cb, LV_EVENT_PRESSED, screen_library);
+
+  // Row 4: AI Assistant
+  lv_obj_t* row_ai = create_menu_row(list_cont, LV_SYMBOL_EYE, "AI Assistant", "Active");
+  lv_obj_add_event_cb(row_ai, load_screen_cb, LV_EVENT_PRESSED, screen_ai);
+
+  // Row 5: Settings / Dashboard URL
   char hostname[256];
+  std::string dash_url = "radxa-zero.local";
   if (gethostname(hostname, sizeof(hostname)) == 0) {
-      std::string dash_url = "Dashboard:\nhttp://" + std::string(hostname) + ".local:8080";
-      lv_label_set_text(lbl_dash, dash_url.c_str());
-  } else {
-      lv_label_set_text(lbl_dash, "Dashboard:\nhttp://radxa-zero.local:8080");
+      dash_url = std::string(hostname) + ".local:8080";
   }
-  lv_label_set_long_mode(lbl_dash, LV_LABEL_LONG_WRAP);
-  lv_obj_set_style_text_align(lbl_dash, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_center(lbl_dash);
+  lv_obj_t* row_dash = create_menu_row(list_cont, LV_SYMBOL_SETTINGS, "Dashboard", dash_url.c_str());
+  lv_obj_remove_flag(row_dash, LV_OBJ_FLAG_CLICKABLE); // Just info
 
   // --- LIBRARY SCREEN ---
   lv_obj_t *lib_title = lv_label_create(screen_library);

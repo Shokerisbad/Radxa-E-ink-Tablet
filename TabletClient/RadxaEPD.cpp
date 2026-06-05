@@ -215,8 +215,8 @@ void RadxaEPD::wake() {
 void RadxaEPD::refresh_full(const uint8_t *buffer) {
   const size_t frame_bytes = (800 * 480) / 8; // 48000 bytes
 
-  // Write white (0x00) to OLD buffer (0x10) — panel polarity: 0x00 = white
-  std::vector<uint8_t> old_buf(frame_bytes, 0x00);
+  // Write black (0xFF) to OLD buffer (0x10) to force the panel to drive to the NEW buffer
+  std::vector<uint8_t> old_buf(frame_bytes, 0xFF);
   send_command(0x10);
   send_data_array(old_buf.data(), frame_bytes);
 

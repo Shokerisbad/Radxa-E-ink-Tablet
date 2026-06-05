@@ -112,6 +112,7 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
   lv_obj_set_size(row, LV_PCT(100), 65); // Full width
   lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_color(row, lv_color_hex(0x000000), 0); // Force black text
   
   // Only bottom border to act as a separator
   lv_obj_set_style_border_width(row, 0, 0);
@@ -608,8 +609,9 @@ void build_tablet_ui() {
 
   // --- MAIN SCREEN ---
   lv_obj_set_flex_flow(screen_main, LV_FLEX_FLOW_COLUMN);
-  // Clear pad so header goes perfectly to the edges
+  // Clear pad but leave top pad for status bar so header isn't eaten up
   lv_obj_set_style_pad_all(screen_main, 0, 0);
+  lv_obj_set_style_pad_top(screen_main, 30, 0);
   lv_obj_set_style_pad_row(screen_main, 0, 0);
 
   // Black Header

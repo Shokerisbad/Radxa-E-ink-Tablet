@@ -558,14 +558,14 @@ static void book_clicked_cb(lv_event_t *e) {
     current_epub = new EpubHandler();
     current_epub->loadEpub(filepath);
     is_epub_active = true;
-    g_reading_state.book_total_pages[path] = current_epub->getTotalPages();
+    g_reading_state.book_total_pages[filepath] = current_epub->getTotalPages();
   } else if (ext == ".pdf") {
     if (current_pdf)
       delete current_pdf;
     current_pdf = new PdfHandler();
     current_pdf->loadPdf(filepath);
     is_epub_active = false;
-    g_reading_state.book_total_pages[path] = current_pdf->getTotalPages();
+    g_reading_state.book_total_pages[filepath] = current_pdf->getTotalPages();
   } else {
     if (reader_title_label)
       lv_label_set_text(reader_title_label, "Unknown Book Format");

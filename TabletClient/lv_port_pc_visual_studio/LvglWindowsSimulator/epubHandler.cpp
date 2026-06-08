@@ -199,7 +199,7 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
 
 void EpubHandler::paginateText(const std::string &text) {
   // Rough estimate matching LVGL default font (montserrat 14)
-  const int SCREEN_MAX_HEIGHT = 730; // Max height for reader_body is 770, leave 40px pad for bottom page counter
+  const int SCREEN_MAX_HEIGHT = 710; // Max height for reader_body is 770, leave 60px pad for bottom page counter
   const int CHARS_PER_LINE = 65; 
   const int LINE_HEIGHT = 16;
 

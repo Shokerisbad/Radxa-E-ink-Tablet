@@ -544,6 +544,14 @@ static void bottombar_tap_cb(lv_event_t *e) {
     }
 }
 
+static void hide_bottombar_cb(lv_event_t *e) {
+  if (is_bottombar_visible) {
+    lv_obj_add_flag(reader_bottom_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(reader_topbar, LV_OBJ_FLAG_HIDDEN);
+    is_bottombar_visible = false;
+  }
+}
+
 static void jump_btn_cb(lv_event_t *e); // Forward declaration
 
 static void book_clicked_cb(lv_event_t *e) {
@@ -1043,6 +1051,7 @@ void build_tablet_ui() {
   lv_obj_t *reader_body = create_white_container(screen_book_reader);
   lv_obj_set_scroll_dir(reader_body, LV_DIR_VER);
   lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+  lv_obj_add_event_cb(reader_body, hide_bottombar_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_set_size(reader_body, 480, 770); // Full height below the 30px status bar
   lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 30);
   lv_obj_set_style_bg_color(reader_body, lv_color_hex(0xFFFFFF), 0);
@@ -1128,13 +1137,6 @@ void build_tablet_ui() {
   is_bottombar_visible = false;
 
   // --- AI ASSISTANT SCREEN ---
-  lv_obj_t *ai_back = create_styled_btn(screen_ai);
-  lv_obj_align(ai_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
-  lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
-  lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
-  lv_label_set_text(lbl_ai_back, LV_SYMBOL_HOME);
-  lv_obj_center(lbl_ai_back);
-
   lv_obj_t *ai_title = lv_label_create(screen_ai);
   lv_label_set_text(ai_title, "AI Assistant");
   lv_obj_align(ai_title, LV_ALIGN_TOP_MID, 0, 40); // Shifted down for status bar
@@ -1231,6 +1233,12 @@ void build_tablet_ui() {
   lv_obj_align(ai_bottombar, LV_ALIGN_BOTTOM_MID, 0, -10);
   lv_obj_set_flex_flow(ai_bottombar, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(ai_bottombar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *ai_back = create_styled_btn(ai_bottombar);
+  lv_obj_add_event_cb(ai_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
+  lv_obj_t *lbl_ai_back = lv_label_create(ai_back);
+  lv_label_set_text(lbl_ai_back, LV_SYMBOL_HOME);
+  lv_obj_center(lbl_ai_back);
 
   lv_obj_t *ai_btn_up = create_styled_btn(ai_bottombar);
   lv_obj_t *ai_lbl_up = lv_label_create(ai_btn_up);

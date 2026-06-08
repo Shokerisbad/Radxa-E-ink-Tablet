@@ -702,7 +702,7 @@ static void build_library_list(SortMode mode) {
       lv_label_set_text(lbl_author, g_book_metadata[path_str].author.c_str());
       lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_CLIP);
       lv_obj_set_width(lbl_author, 280);
-      lv_obj_set_style_text_color(lbl_author, lv_color_hex(0x666666), 0); // Gray text for author
+      // Removed gray text color because it causes thin letters ('l') to disappear on E-ink
 
       lv_obj_t *rate_btn = create_styled_btn(row);
       lv_obj_set_size(rate_btn, 80, LV_SIZE_CONTENT);

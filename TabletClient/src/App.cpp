@@ -81,6 +81,7 @@ static void write_bmp_cover(const char* filename, int w, int h, int comp, const 
 struct ReadingState {
     std::string last_book_path;
     std::map<std::string, int> book_pages;
+    std::map<std::string, int> book_total_pages;
 };
 ReadingState g_reading_state;
 
@@ -97,6 +98,11 @@ static void load_reading_state() {
                     g_reading_state.book_pages[key] = val;
                 }
             }
+            if (j.contains("book_total_pages")) {
+                for (auto& [key, val] : j["book_total_pages"].items()) {
+                    g_reading_state.book_total_pages[key] = val;
+                }
+            }
         } catch (...) {}
     }
 }
@@ -108,6 +114,7 @@ static void save_reading_state() {
         json j;
         j["last_book_path"] = g_reading_state.last_book_path;
         j["book_pages"] = g_reading_state.book_pages;
+        j["book_total_pages"] = g_reading_state.book_total_pages;
         std::ofstream f(path);
         f << j.dump(4);
     } catch (...) {}
@@ -278,16 +285,36 @@ lv_obj_t *screen_library;
 lv_obj_t *screen_book_reader;
 lv_obj_t *screen_ai;
 
+static lv_obj_t* continue_subtitle_label = nullptr;
+
+static void update_continue_reading_button() {
+    if (!continue_subtitle_label) return;
+    std::string continue_subtitle = "No book";
+    if (!g_reading_state.last_book_path.empty()) {
+        if (g_book_metadata.count(g_reading_state.last_book_path)) {
+            continue_subtitle = g_book_metadata[g_reading_state.last_book_path].title;
+        } else {
+            continue_subtitle = std::filesystem::path(g_reading_state.last_book_path).filename().string();
+        }
+    }
+    lv_label_set_text(continue_subtitle_label, continue_subtitle.c_str());
+}
+
 static void load_screen_cb(lv_event_t *e) {
   lv_obj_t *target = (lv_obj_t *)lv_event_get_user_data(e);
+  if (target == screen_main) {
+      update_continue_reading_button();
+  }
   lv_scr_load(target);
 }
 
 // Globals for reader updates
 lv_obj_t *reader_title_label;
 lv_obj_t *reader_content_label;
-lv_obj_t *reader_img;       // Added for EPUB images
+lv_obj_t *reader_topbar; // Made global to toggle hidden state
 lv_obj_t *reader_bottombar; // Made global to toggle hidden state
+lv_obj_t *reader_bottom_menu; // Menu container that gets toggled
+lv_obj_t *reader_img;       // Added for EPUB images
 lv_obj_t *ai_content = NULL;   // AI screen results container
 lv_obj_t *ai_input_ta = NULL;  // AI screen text input
 lv_obj_t *reader_page_label = NULL; // Page counter label (e.g. "3 / 42")
@@ -499,12 +526,20 @@ static void reader_prev_cb(lv_event_t *e) {
 
 static void toggle_bottombar_cb(lv_event_t *e) {
   if (is_bottombar_visible) {
-    lv_obj_add_flag(reader_bottombar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(reader_bottom_menu, LV_OBJ_FLAG_HIDDEN);
     is_bottombar_visible = false;
   } else {
-    lv_obj_clear_flag(reader_bottombar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(reader_bottom_menu, LV_OBJ_FLAG_HIDDEN);
     is_bottombar_visible = true;
   }
+}
+
+static void bottombar_tap_cb(lv_event_t *e) {
+    lv_obj_t* target = lv_event_get_target(e);
+    lv_obj_t* current_target = lv_event_get_current_target(e);
+    if (target == current_target) {
+        toggle_bottombar_cb(e);
+    }
 }
 
 static void jump_btn_cb(lv_event_t *e); // Forward declaration
@@ -523,12 +558,14 @@ static void book_clicked_cb(lv_event_t *e) {
     current_epub = new EpubHandler();
     current_epub->loadEpub(filepath);
     is_epub_active = true;
+    g_reading_state.book_total_pages[path] = current_epub->getTotalPages();
   } else if (ext == ".pdf") {
     if (current_pdf)
       delete current_pdf;
     current_pdf = new PdfHandler();
     current_pdf->loadPdf(filepath);
     is_epub_active = false;
+    g_reading_state.book_total_pages[path] = current_pdf->getTotalPages();
   } else {
     if (reader_title_label)
       lv_label_set_text(reader_title_label, "Unknown Book Format");
@@ -652,6 +689,10 @@ static void build_library_list(SortMode mode) {
                   g_reading_state.book_pages[new_path] = g_reading_state.book_pages[old_p];
                   g_reading_state.book_pages.erase(old_p);
               }
+              if (g_reading_state.book_total_pages.count(old_p)) {
+                  g_reading_state.book_total_pages[new_path] = g_reading_state.book_total_pages[old_p];
+                  g_reading_state.book_total_pages.erase(old_p);
+              }
               
               g_book_metadata[new_path] = g_book_metadata[old_p];
               g_book_metadata.erase(old_p);
@@ -699,7 +740,19 @@ static void build_library_list(SortMode mode) {
       lv_obj_set_width(lbl_title, 280);
 
       lv_obj_t *lbl_author = lv_label_create(btn);
-      lv_label_set_text(lbl_author, g_book_metadata[path_str].author.c_str());
+      
+      std::string author_str = g_book_metadata[path_str].author;
+      if (g_reading_state.book_pages.count(path_str)) {
+          int cur = g_reading_state.book_pages[path_str] + 1;
+          int tot = g_reading_state.book_total_pages.count(path_str) ? g_reading_state.book_total_pages[path_str] : 0;
+          if (tot > 0) {
+              author_str += "  [" + std::to_string(cur) + "/" + std::to_string(tot) + "]";
+          } else {
+              author_str += "  [Page " + std::to_string(cur) + "]";
+          }
+      }
+      
+      lv_label_set_text(lbl_author, author_str.c_str());
       lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_CLIP);
       lv_obj_set_width(lbl_author, 280);
       // Removed gray text color because it causes thin letters ('l') to disappear on E-ink
@@ -869,8 +922,7 @@ void build_tablet_ui() {
 
   // Toggle bottom bar when clicking anywhere on the background of the read
   // screen
-  lv_obj_add_event_cb(screen_book_reader, toggle_bottombar_cb, LV_EVENT_CLICKED,
-                      NULL);
+  // Removed full-screen click to toggle bottombar, now handled by tapping bottom of screen
 
   // --- MAIN SCREEN ---
   lv_obj_set_flex_flow(screen_main, LV_FLEX_FLOW_COLUMN);
@@ -917,6 +969,12 @@ void build_tablet_ui() {
       }
   }
   lv_obj_t* row_continue = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", continue_subtitle.c_str());
+  continue_subtitle_label = lv_obj_get_child(row_continue, 2);
+  if (continue_subtitle_label) {
+      lv_label_set_long_mode(continue_subtitle_label, LV_LABEL_LONG_CLIP);
+      lv_obj_set_width(continue_subtitle_label, 150); // Limit width to prevent overlap
+  }
+  
   if (g_reading_state.last_book_path.empty()) {
       lv_obj_add_event_cb(row_continue, load_screen_cb, LV_EVENT_CLICKED, screen_library);
   } else {
@@ -1016,39 +1074,54 @@ void build_tablet_ui() {
                     "Select a book from the library to begin reading.");
 
   // Bottom Toolbar for Pagination (Always Visible)
+  // Bottom Toolbar container (Transparent tap zone + Page counter)
   reader_bottombar = create_white_container(screen_book_reader);
   lv_obj_set_size(reader_bottombar, LV_PCT(100), 60);
   lv_obj_align(reader_bottombar, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_opa(reader_bottombar, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(reader_bottombar, 0, 0);
+  lv_obj_add_event_cb(reader_bottombar, bottombar_tap_cb, LV_EVENT_CLICKED, NULL);
 
-  lv_obj_set_flex_flow(reader_bottombar, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(reader_bottombar, LV_FLEX_ALIGN_SPACE_EVENLY,
+  // Page counter label (Always visible in the bottom right)
+  reader_page_label = lv_label_create(reader_bottombar);
+  lv_label_set_text(reader_page_label, "- / -");
+  lv_obj_set_style_text_color(reader_page_label, lv_color_hex(0x000000), 0);
+  lv_obj_align(reader_page_label, LV_ALIGN_BOTTOM_RIGHT, -20, -20);
+
+  // Bottom Menu (Opaque container for buttons, gets toggled)
+  reader_bottom_menu = create_white_container(reader_bottombar);
+  lv_obj_set_size(reader_bottom_menu, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_opa(reader_bottom_menu, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(reader_bottom_menu, 0, 0);
+  lv_obj_set_flex_flow(reader_bottom_menu, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(reader_bottom_menu, LV_FLEX_ALIGN_SPACE_EVENLY,
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  lv_obj_t *reader_back = create_styled_btn(reader_bottombar);
+  lv_obj_t *reader_back = create_styled_btn(reader_bottom_menu);
   lv_obj_add_event_cb(reader_back, load_screen_cb, LV_EVENT_CLICKED,
                       screen_library);
   lv_obj_t *lbl_reader_back = lv_label_create(reader_back);
   lv_label_set_text(lbl_reader_back, LV_SYMBOL_HOME);
   lv_obj_center(lbl_reader_back);
 
-  lv_obj_t *btn_prev = create_styled_btn(reader_bottombar);
+  lv_obj_t *btn_prev = create_styled_btn(reader_bottom_menu);
   lv_obj_add_event_cb(btn_prev, reader_prev_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_prev = lv_label_create(btn_prev);
   lv_label_set_text(lbl_prev, "<- Prev");
 
-  lv_obj_t *btn_jump = create_styled_btn(reader_bottombar);
+  lv_obj_t *btn_jump = create_styled_btn(reader_bottom_menu);
   lv_obj_add_event_cb(btn_jump, jump_btn_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_jump = lv_label_create(btn_jump);
   lv_label_set_text(lbl_jump, "Jump");
 
-  // Page counter label
-  reader_page_label = lv_label_create(reader_bottombar);
-  lv_label_set_text(reader_page_label, "- / -");
-
-  lv_obj_t *btn_next = create_styled_btn(reader_bottombar);
+  lv_obj_t *btn_next = create_styled_btn(reader_bottom_menu);
   lv_obj_add_event_cb(btn_next, reader_next_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_next = lv_label_create(btn_next);
   lv_label_set_text(lbl_next, "Next ->");
+  
+  // Hide menu by default
+  lv_obj_add_flag(reader_bottom_menu, LV_OBJ_FLAG_HIDDEN);
+  is_bottombar_visible = false;
 
   // --- AI ASSISTANT SCREEN ---
   lv_obj_t *ai_back = create_styled_btn(screen_ai);

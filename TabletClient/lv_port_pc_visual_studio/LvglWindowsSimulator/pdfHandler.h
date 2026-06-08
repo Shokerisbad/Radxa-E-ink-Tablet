@@ -20,6 +20,9 @@ public:
   // Get the title of the loaded pdf
   std::string getTitle() const;
 
+  // Extract metadata directly from the file
+  static bool getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out);
+
   // Returns the path to the extracted BMP page as an LVGL `IMG:` marker
   std::string getContent() const;
 

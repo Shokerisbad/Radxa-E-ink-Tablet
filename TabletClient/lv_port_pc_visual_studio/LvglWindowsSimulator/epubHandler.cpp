@@ -438,3 +438,72 @@ bool EpubHandler::hasNextPage() const {
 }
 
 bool EpubHandler::hasPrevPage() const { return m_currentPage > 0; }
+
+bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out) {
+  if (!std::filesystem::exists(filepath)) return false;
+
+  int err = 0;
+  zip_t *z = zip_open(filepath.c_str(), 0, &err);
+  if (!z) return false;
+
+  auto read_file_from_zip = [&](const std::string& path) -> std::string {
+    zip_file_t *zf = zip_fopen(z, path.c_str(), 0);
+    if (!zf) return "";
+    std::string content;
+    char buf[1024];
+    while (auto bytes_read = zip_fread(zf, buf, sizeof(buf))) {
+      if (bytes_read < 0) break;
+      content.append(buf, bytes_read);
+    }
+    zip_fclose(zf);
+    return content;
+  };
+
+  std::string container = read_file_from_zip("META-INF/container.xml");
+  if (container.empty()) {
+    zip_close(z);
+    return false;
+  }
+
+  std::string opf_path;
+  size_t root_pos = container.find("full-path=\"");
+  if (root_pos != std::string::npos) {
+    root_pos += 11;
+    size_t end_pos = container.find("\"", root_pos);
+    if (end_pos != std::string::npos) {
+      opf_path = container.substr(root_pos, end_pos - root_pos);
+    }
+  }
+
+  if (opf_path.empty()) {
+    zip_close(z);
+    return false;
+  }
+
+  std::string opf_content = read_file_from_zip(opf_path);
+  zip_close(z);
+
+  if (opf_content.empty()) return false;
+
+  // Extract Title
+  size_t title_start = opf_content.find("<dc:title");
+  if (title_start != std::string::npos) {
+    title_start = opf_content.find(">", title_start) + 1;
+    size_t title_end = opf_content.find("</dc:title>", title_start);
+    if (title_end != std::string::npos) {
+      title_out = opf_content.substr(title_start, title_end - title_start);
+    }
+  }
+
+  // Extract Author
+  size_t creator_start = opf_content.find("<dc:creator");
+  if (creator_start != std::string::npos) {
+    creator_start = opf_content.find(">", creator_start) + 1;
+    size_t creator_end = opf_content.find("</dc:creator>", creator_start);
+    if (creator_end != std::string::npos) {
+      author_out = opf_content.substr(creator_start, creator_end - creator_start);
+    }
+  }
+
+  return true;
+}

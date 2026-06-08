@@ -14,6 +14,9 @@ public:
   // Get the title of the loaded book
   std::string getTitle() const;
 
+  // Extract metadata directly from the file
+  static bool getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out);
+
   // Get the content (current page text)
   std::string getContent() const;
 

@@ -221,3 +221,39 @@ std::string PdfHandler::getContent() const {
                          std::to_string(m_currentPage) + ".bmp";
   return "[IMG:A:" + bmp_path + "]";
 }
+
+bool PdfHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out) {
+    if (!std::filesystem::exists(filepath)) return false;
+
+    fz_context* ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);
+    if (!ctx) return false;
+
+    fz_register_document_handlers(ctx);
+    fz_document* doc = nullptr;
+    bool success = false;
+
+    fz_try(ctx) {
+        doc = fz_open_document(ctx, filepath.c_str());
+        if (doc) {
+            char title_buf[256] = {0};
+            char author_buf[256] = {0};
+            
+            if (fz_lookup_metadata(ctx, doc, FZ_META_INFO_TITLE, title_buf, sizeof(title_buf)) > 0) {
+                title_out = title_buf;
+            }
+            if (fz_lookup_metadata(ctx, doc, FZ_META_INFO_AUTHOR, author_buf, sizeof(author_buf)) > 0) {
+                author_out = author_buf;
+            }
+            success = true;
+        }
+    }
+    fz_always(ctx) {
+        if (doc) fz_drop_document(ctx, doc);
+        fz_drop_context(ctx);
+    }
+    fz_catch(ctx) {
+        success = false;
+    }
+
+    return success;
+}

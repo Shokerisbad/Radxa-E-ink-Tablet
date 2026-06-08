@@ -21,9 +21,12 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
+#include <map>
+#include <algorithm>
 
 // Include stb_image for cover image decoding (IMPLEMENTATION is in epubHandler.cpp)
 #include "../LvglPlatform/lvgl/src/libs/gltf/stb_image/stb_image.h"
@@ -75,7 +78,89 @@ static void write_bmp_cover(const char* filename, int w, int h, int comp, const 
 
 // --- READING TRACKER DATA ---
 
+struct ReadingState {
+    std::string last_book_path;
+    std::map<std::string, int> book_pages;
+};
+ReadingState g_reading_state;
+
+static void load_reading_state() {
+    std::string path = "books/.cache/reading_state.json";
+    if (std::filesystem::exists(path)) {
+        try {
+            std::ifstream f(path);
+            json j;
+            f >> j;
+            if (j.contains("last_book_path")) g_reading_state.last_book_path = j["last_book_path"];
+            if (j.contains("book_pages")) {
+                for (auto& [key, val] : j["book_pages"].items()) {
+                    g_reading_state.book_pages[key] = val;
+                }
+            }
+        } catch (...) {}
+    }
+}
+
+static void save_reading_state() {
+    std::filesystem::create_directories("books/.cache");
+    std::string path = "books/.cache/reading_state.json";
+    try {
+        json j;
+        j["last_book_path"] = g_reading_state.last_book_path;
+        j["book_pages"] = g_reading_state.book_pages;
+        std::ofstream f(path);
+        f << j.dump(4);
+    } catch (...) {}
+}
+
+struct BookMetadata {
+    std::string title;
+    std::string author;
+    uint64_t mtime;
+};
+std::map<std::string, BookMetadata> g_book_metadata;
+
+static void load_metadata_cache() {
+    std::string path = "books/.cache/metadata.json";
+    if (std::filesystem::exists(path)) {
+        try {
+            std::ifstream f(path);
+            json j;
+            f >> j;
+            for (auto& [key, val] : j.items()) {
+                g_book_metadata[key] = {
+                    val.value("title", ""),
+                    val.value("author", ""),
+                    val.value("mtime", 0ULL)
+                };
+            }
+        } catch (...) {}
+    }
+}
+
+static void save_metadata_cache() {
+    std::filesystem::create_directories("books/.cache");
+    std::string path = "books/.cache/metadata.json";
+    try {
+        json j;
+        for (const auto& [key, val] : g_book_metadata) {
+            j[key] = {
+                {"title", val.title},
+                {"author", val.author},
+                {"mtime", val.mtime}
+            };
+        }
+        std::ofstream f(path);
+        f << j.dump(4);
+    } catch (...) {}
+}
+
 std::vector<FinishedBook> locally_finished_books;
+
+enum SortMode {
+    SORT_BY_TITLE,
+    SORT_BY_AUTHOR
+};
 
 // --- STYLED BUTTON HELPER ---
 static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
@@ -208,7 +293,7 @@ static PdfHandler *current_pdf = nullptr;
 static bool is_epub_active = false;
 static bool is_bottombar_visible = false; // Track toggle state
 
-static void build_library_list(); // Forward declaration
+static void build_library_list(SortMode mode = SORT_BY_TITLE); // Forward declaration
 static void request_ai_recommendation(const std::string &user_prompt, bool exact_match = false, bool use_reviews = true);
 
 static void show_rating_popup(const std::string &book_title, int total_pages) {
@@ -376,9 +461,12 @@ static void check_end_of_book() {
 static void reader_next_cb(lv_event_t *e) {
   if (is_epub_active && current_epub) {
     current_epub->nextPage();
+    g_reading_state.book_pages[g_reading_state.last_book_path] = current_epub->getCurrentPage();
   } else if (!is_epub_active && current_pdf) {
     current_pdf->nextPage();
+    g_reading_state.book_pages[g_reading_state.last_book_path] = current_pdf->getCurrentPage();
   }
+  save_reading_state();
   update_reader_ui();
   check_end_of_book();
 }
@@ -386,9 +474,12 @@ static void reader_next_cb(lv_event_t *e) {
 static void reader_prev_cb(lv_event_t *e) {
   if (is_epub_active && current_epub) {
     current_epub->prevPage();
+    g_reading_state.book_pages[g_reading_state.last_book_path] = current_epub->getCurrentPage();
   } else if (!is_epub_active && current_pdf) {
     current_pdf->prevPage();
+    g_reading_state.book_pages[g_reading_state.last_book_path] = current_pdf->getCurrentPage();
   }
+  save_reading_state();
   update_reader_ui();
 }
 
@@ -435,13 +526,27 @@ static void book_clicked_cb(lv_event_t *e) {
 
   is_bottombar_visible = true;
 
+  // Track state
+  g_reading_state.last_book_path = std::string(filepath);
+  if (g_reading_state.book_pages.count(g_reading_state.last_book_path)) {
+      int saved_page = g_reading_state.book_pages[g_reading_state.last_book_path];
+      if (is_epub_active && current_epub) current_epub->jumpToPage(saved_page);
+      else if (!is_epub_active && current_pdf) current_pdf->jumpToPage(saved_page);
+  } else {
+      g_reading_state.book_pages[g_reading_state.last_book_path] = 0;
+  }
+  save_reading_state();
+
   update_reader_ui();
   lv_scr_load(screen_book_reader);
 }
 
-static void refresh_lib_cb(lv_event_t *e) { build_library_list(); }
+static SortMode g_current_sort = SORT_BY_TITLE;
 
-static void build_library_list() {
+static void refresh_lib_cb(lv_event_t *e) { build_library_list(g_current_sort); }
+
+static void build_library_list(SortMode mode) {
+  g_current_sort = mode;
   if (book_list == NULL)
     return;
 
@@ -453,24 +558,89 @@ static void build_library_list() {
     std::filesystem::create_directory("books");
   }
 
+  static bool cache_loaded = false;
+  if (!cache_loaded) {
+      load_metadata_cache();
+      cache_loaded = true;
+  }
+  
+  bool cache_changed = false;
+
+  std::vector<std::string> temp_files;
   for (const auto &entry : std::filesystem::directory_iterator("books")) {
     if (entry.is_regular_file()) {
       std::string ext = entry.path().extension().string();
-      for (auto &c : ext)
-        c = tolower(c);
-
+      for (auto &c : ext) c = tolower(c);
       if (ext == ".epub" || ext == ".pdf") {
-        book_filepaths.push_back(entry.path().string());
-
-        lv_obj_t *btn = create_styled_btn(book_list);
-        lv_obj_set_width(btn, LV_PCT(100));
-        lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_PRESSED,
-                            (void *)book_filepaths.back().c_str());
-        lv_obj_t *lbl = lv_label_create(btn);
-        lv_label_set_text(lbl, entry.path().filename().string().c_str());
-        lv_obj_center(lbl);
+        std::string p = entry.path().string();
+        temp_files.push_back(p);
+        
+        auto mtime = std::chrono::duration_cast<std::chrono::seconds>(entry.last_write_time().time_since_epoch()).count();
+        if (g_book_metadata.find(p) == g_book_metadata.end() || g_book_metadata[p].mtime != (uint64_t)mtime) {
+            std::string t, a;
+            bool ok = false;
+            if (ext == ".epub") ok = EpubHandler::getMetadata(p, t, a);
+            else ok = PdfHandler::getMetadata(p, t, a);
+            
+            if (t.empty()) {
+                std::string fn = entry.path().filename().string();
+                size_t dot_pos = fn.rfind('.');
+                if (dot_pos != std::string::npos) fn = fn.substr(0, dot_pos);
+                t = fn;
+            }
+            if (a.empty()) a = "Unknown";
+            
+            g_book_metadata[p] = {t, a, (uint64_t)mtime};
+            cache_changed = true;
+        }
       }
     }
+  }
+
+  if (cache_changed) save_metadata_cache();
+
+  if (mode == SORT_BY_TITLE) {
+      std::sort(temp_files.begin(), temp_files.end(), [](const std::string& a, const std::string& b) {
+          return g_book_metadata[a].title < g_book_metadata[b].title;
+      });
+  } else if (mode == SORT_BY_AUTHOR) {
+      std::sort(temp_files.begin(), temp_files.end(), [](const std::string& a, const std::string& b) {
+          if (g_book_metadata[a].author == g_book_metadata[b].author)
+              return g_book_metadata[a].title < g_book_metadata[b].title;
+          return g_book_metadata[a].author < g_book_metadata[b].author;
+      });
+  }
+
+  for (const auto &path_str : temp_files) {
+      book_filepaths.push_back(path_str);
+      
+      lv_obj_t *row = create_white_container(book_list);
+      lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+      lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_style_pad_all(row, 0, 0);
+
+      lv_obj_t *btn = create_styled_btn(row);
+      lv_obj_set_size(btn, 320, LV_SIZE_CONTENT);
+      lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_PRESSED, (void *)book_filepaths.back().c_str());
+      lv_obj_t *lbl = lv_label_create(btn);
+      std::string display_text = g_book_metadata[path_str].title + " - " + g_book_metadata[path_str].author;
+      lv_label_set_text(lbl, display_text.c_str());
+      lv_label_set_long_mode(lbl, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      lv_obj_set_width(lbl, 300);
+      lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 10, 0);
+
+      lv_obj_t *rate_btn = create_styled_btn(row);
+      lv_obj_set_size(rate_btn, 80, LV_SIZE_CONTENT);
+      lv_obj_t *rate_lbl = lv_label_create(rate_btn);
+      lv_label_set_text(rate_lbl, "Rate");
+      lv_obj_center(rate_lbl);
+      
+      lv_obj_add_event_cb(rate_btn, [](lv_event_t* e) {
+          const char* p = (const char*)lv_event_get_user_data(e);
+          std::string title = g_book_metadata[p].title;
+          show_rating_popup(title, 1); 
+      }, LV_EVENT_PRESSED, (void *)book_filepaths.back().c_str());
   }
 }
 
@@ -515,9 +685,12 @@ static void jump_btn_cb(lv_event_t *e) {
           int page = std::stoi(txt) - 1;
           if (is_epub_active && current_epub) {
             current_epub->jumpToPage(page);
+            g_reading_state.book_pages[g_reading_state.last_book_path] = current_epub->getCurrentPage();
           } else if (!is_epub_active && current_pdf) {
             current_pdf->jumpToPage(page);
+            g_reading_state.book_pages[g_reading_state.last_book_path] = current_pdf->getCurrentPage();
           }
+          save_reading_state();
           update_reader_ui();
           check_end_of_book();
         }
@@ -569,6 +742,7 @@ static void global_gesture_cb(lv_event_t *e) {
 }
 
 void build_tablet_ui() {
+  load_reading_state();
   checkAndClearCache();
   screen_main = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), 0);
@@ -657,16 +831,30 @@ void build_tablet_ui() {
   lv_obj_set_flex_flow(list_cont, LV_FLEX_FLOW_COLUMN);
 
   // Row 1: Continue Reading
-  lv_obj_t* row_continue = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", "No book");
-  lv_obj_add_event_cb(row_continue, load_screen_cb, LV_EVENT_PRESSED, screen_library); // Goes to lib for now
+  std::string continue_subtitle = "No book";
+  if (!g_reading_state.last_book_path.empty()) {
+      continue_subtitle = std::filesystem::path(g_reading_state.last_book_path).filename().string();
+  }
+  lv_obj_t* row_continue = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", continue_subtitle.c_str());
+  if (g_reading_state.last_book_path.empty()) {
+      lv_obj_add_event_cb(row_continue, load_screen_cb, LV_EVENT_PRESSED, screen_library);
+  } else {
+      lv_obj_add_event_cb(row_continue, book_clicked_cb, LV_EVENT_PRESSED, (void *)g_reading_state.last_book_path.c_str());
+  }
 
   // Row 2: Books by Title
   lv_obj_t* row_title = create_menu_row(list_cont, LV_SYMBOL_DIRECTORY, "Books by Title", "Library");
-  lv_obj_add_event_cb(row_title, load_screen_cb, LV_EVENT_PRESSED, screen_library);
+  lv_obj_add_event_cb(row_title, [](lv_event_t* e) {
+      build_library_list(SORT_BY_TITLE);
+      lv_scr_load(screen_library);
+  }, LV_EVENT_PRESSED, NULL);
 
   // Row 3: Books by Author
   lv_obj_t* row_author = create_menu_row(list_cont, LV_SYMBOL_IMAGE, "Books by Author", "Library");
-  lv_obj_add_event_cb(row_author, load_screen_cb, LV_EVENT_PRESSED, screen_library);
+  lv_obj_add_event_cb(row_author, [](lv_event_t* e) {
+      build_library_list(SORT_BY_AUTHOR);
+      lv_scr_load(screen_library);
+  }, LV_EVENT_PRESSED, NULL);
 
   // Row 4: AI Assistant
   lv_obj_t* row_ai = create_menu_row(list_cont, LV_SYMBOL_EDIT, "AI Assistant", "Active");
@@ -707,7 +895,7 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(book_list, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_set_flex_flow(book_list, LV_FLEX_FLOW_COLUMN);
 
-  build_library_list();
+  build_library_list(SORT_BY_TITLE);
 
   // --- BOOK READER SCREEN ---
   lv_obj_t *reader_topbar = create_white_container(screen_book_reader);
@@ -797,6 +985,21 @@ void build_tablet_ui() {
   lv_checkbox_set_text(history_cb, "Use Reading History");
   lv_obj_align(history_cb, LV_ALIGN_TOP_LEFT, 20, 80); // Placed cleanly above input bar
   lv_obj_add_state(history_cb, LV_STATE_CHECKED); // Default to checked
+
+  lv_obj_t * clear_history_btn = create_styled_btn(screen_ai);
+  lv_obj_set_size(clear_history_btn, 120, 35);
+  lv_obj_align_to(clear_history_btn, history_cb, LV_ALIGN_OUT_RIGHT_MID, 40, 0);
+  lv_obj_t * clear_lbl = lv_label_create(clear_history_btn);
+  lv_label_set_text(clear_lbl, "Clear History");
+  lv_obj_center(clear_lbl);
+  lv_obj_add_event_cb(clear_history_btn, [](lv_event_t *e) {
+      locally_finished_books.clear();
+      if (ai_content) {
+          lv_obj_clean(ai_content);
+          lv_obj_t *lbl = lv_label_create(ai_content);
+          lv_label_set_text(lbl, "Reading history cleared!");
+      }
+  }, LV_EVENT_PRESSED, NULL);
 
   // Input bar (fixed below the checkbox)
   lv_obj_t *ai_input_bar = create_white_container(screen_ai);

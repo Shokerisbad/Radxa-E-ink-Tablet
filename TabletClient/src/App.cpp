@@ -378,10 +378,18 @@ static void update_reader_ui() {
   lv_obj_invalidate(screen_book_reader); // Force single unified redraw for page and counter
   std::string text;
   if (is_epub_active && current_epub) {
-    lv_label_set_text(reader_title_label, current_epub->getTitle().c_str());
+    std::string display_title = current_epub->getTitle();
+    if (g_book_metadata.count(g_reading_state.last_book_path)) {
+        display_title = g_book_metadata[g_reading_state.last_book_path].title;
+    }
+    lv_label_set_text(reader_title_label, display_title.c_str());
     text = current_epub->getContent();
   } else if (!is_epub_active && current_pdf) {
-    lv_label_set_text(reader_title_label, current_pdf->getTitle().c_str());
+    std::string display_title = current_pdf->getTitle();
+    if (g_book_metadata.count(g_reading_state.last_book_path)) {
+        display_title = g_book_metadata[g_reading_state.last_book_path].title;
+    }
+    lv_label_set_text(reader_title_label, display_title.c_str());
     text = current_pdf->getContent();
   }
 
@@ -687,12 +695,12 @@ static void build_library_list(SortMode mode) {
       
       lv_obj_t *lbl_title = lv_label_create(btn);
       lv_label_set_text(lbl_title, g_book_metadata[path_str].title.c_str());
-      lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_DOT);
+      lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CROP);
       lv_obj_set_width(lbl_title, 280);
 
       lv_obj_t *lbl_author = lv_label_create(btn);
       lv_label_set_text(lbl_author, g_book_metadata[path_str].author.c_str());
-      lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_DOT);
+      lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_CROP);
       lv_obj_set_width(lbl_author, 280);
       lv_obj_set_style_text_color(lbl_author, lv_color_hex(0x666666), 0); // Gray text for author
 
@@ -902,7 +910,11 @@ void build_tablet_ui() {
   // Row 1: Continue Reading
   std::string continue_subtitle = "No book";
   if (!g_reading_state.last_book_path.empty()) {
-      continue_subtitle = std::filesystem::path(g_reading_state.last_book_path).filename().string();
+      if (g_book_metadata.count(g_reading_state.last_book_path)) {
+          continue_subtitle = g_book_metadata[g_reading_state.last_book_path].title;
+      } else {
+          continue_subtitle = std::filesystem::path(g_reading_state.last_book_path).filename().string();
+      }
   }
   lv_obj_t* row_continue = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", continue_subtitle.c_str());
   if (g_reading_state.last_book_path.empty()) {

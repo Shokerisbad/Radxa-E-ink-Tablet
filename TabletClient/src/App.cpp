@@ -635,7 +635,7 @@ static void build_library_list(SortMode mode) {
       lv_obj_t *lbl = lv_label_create(btn);
       std::string display_text = g_book_metadata[path_str].title + " - " + g_book_metadata[path_str].author;
       lv_label_set_text(lbl, display_text.c_str());
-      lv_label_set_long_mode(lbl, LV_LABEL_LONG_SCROLL_CIRCULAR);
+      lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
       lv_obj_set_width(lbl, 300);
       lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 10, 0);
 
@@ -667,6 +667,8 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_textarea_set_one_line(ta, true);
   lv_textarea_set_accepted_chars(ta, "0123456789");
   lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 40);
+  lv_obj_set_style_anim_duration(ta, 0, LV_PART_CURSOR);
+  lv_obj_set_style_opa(ta, 0, LV_PART_CURSOR);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
   lv_keyboard_set_popovers(kb, false);

@@ -527,9 +527,11 @@ static void reader_prev_cb(lv_event_t *e) {
 static void toggle_bottombar_cb(lv_event_t *e) {
   if (is_bottombar_visible) {
     lv_obj_add_flag(reader_bottom_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(reader_topbar, LV_OBJ_FLAG_HIDDEN);
     is_bottombar_visible = false;
   } else {
     lv_obj_clear_flag(reader_bottom_menu, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(reader_topbar, LV_OBJ_FLAG_HIDDEN);
     is_bottombar_visible = true;
   }
 }
@@ -1037,20 +1039,12 @@ void build_tablet_ui() {
   build_library_list(SORT_BY_TITLE);
 
   // --- BOOK READER SCREEN ---
-  lv_obj_t *reader_topbar = create_white_container(screen_book_reader);
-  lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
-  lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30); // Shifted down for status bar
-
-  reader_title_label = lv_label_create(reader_topbar);
-  lv_label_set_text(reader_title_label, "Reading Book...");
-  lv_obj_align(reader_title_label, LV_ALIGN_CENTER, 0, 0);
-
-  // Create a scrollable container for the body of the reader
+  // Create the body FIRST so it sits behind the top and bottom bars when they are toggled on
   lv_obj_t *reader_body = create_white_container(screen_book_reader);
-  lv_obj_set_scroll_dir(reader_body, LV_DIR_VER); // Restrict to vertical scroll if any
+  lv_obj_set_scroll_dir(reader_body, LV_DIR_VER);
   lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
-  lv_obj_set_size(reader_body, 480, 650); // 800 (display) - 30 (status_bar) - 60 (topbar) - 60 (bottombar)
-  lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 90); // starts at y=90
+  lv_obj_set_size(reader_body, 480, 770); // Full height below the 30px status bar
+  lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 30);
   lv_obj_set_style_bg_color(reader_body, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(reader_body, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(reader_body, 0, 0);
@@ -1069,9 +1063,19 @@ void build_tablet_ui() {
   reader_content_label = lv_label_create(reader_body);
   lv_label_set_long_mode(reader_content_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(reader_content_label, 460);
+  lv_label_set_text(reader_content_label, "Select a book from the library to begin reading.");
 
-  lv_label_set_text(reader_content_label,
-                    "Select a book from the library to begin reading.");
+  // Top Bar (Toggled with bottom menu)
+  reader_topbar = create_white_container(screen_book_reader);
+  lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
+  lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30);
+  lv_obj_add_flag(reader_topbar, LV_OBJ_FLAG_HIDDEN); // Hidden by default
+
+  reader_title_label = lv_label_create(reader_topbar);
+  lv_label_set_text(reader_title_label, "Reading Book...");
+  lv_obj_align(reader_title_label, LV_ALIGN_CENTER, 0, 0);
+
+  // Content label already created above
 
   // Bottom Toolbar for Pagination (Always Visible)
   // Bottom Toolbar container (Transparent tap zone + Page counter)

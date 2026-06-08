@@ -535,8 +535,8 @@ static void toggle_bottombar_cb(lv_event_t *e) {
 }
 
 static void bottombar_tap_cb(lv_event_t *e) {
-    lv_obj_t* target = lv_event_get_target(e);
-    lv_obj_t* current_target = lv_event_get_current_target(e);
+    lv_obj_t* target = (lv_obj_t*)lv_event_get_target(e);
+    lv_obj_t* current_target = (lv_obj_t*)lv_event_get_current_target(e);
     if (target == current_target) {
         toggle_bottombar_cb(e);
     }

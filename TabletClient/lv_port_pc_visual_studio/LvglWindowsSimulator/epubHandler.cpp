@@ -186,7 +186,11 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
           result += c; // wasn't a valid entity, just add the ampersand
         }
       } else {
-        result += c;
+        if (c == '\n' || c == '\r') {
+          result += ' ';
+        } else {
+          result += c;
+        }
       }
     }
   }
@@ -194,11 +198,10 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
 }
 
 void EpubHandler::paginateText(const std::string &text) {
-  // Rough estimate matching LVGL font height and flex gap
-  const int SCREEN_MAX_HEIGHT =
-      670; // Accounts for both top and bottom 60px toolbars
-  const int CHARS_PER_LINE = 66; // Tighter wrap boundary
-  const int LINE_HEIGHT = 20;    // Tighter vertical spacing
+  // Rough estimate matching LVGL default font (montserrat 14)
+  const int SCREEN_MAX_HEIGHT = 630; // Max height for reader_body is 650, leave 20px pad
+  const int CHARS_PER_LINE = 65; 
+  const int LINE_HEIGHT = 16;
 
   std::string current_page;
   int current_height = 0;

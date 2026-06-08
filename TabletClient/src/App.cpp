@@ -573,6 +573,8 @@ static void build_library_list(SortMode mode) {
   bool cache_changed = false;
 
   std::vector<std::string> temp_files;
+  std::vector<std::pair<std::string, std::string>> pending_renames;
+
   for (const auto &entry : std::filesystem::directory_iterator("books")) {
     if (entry.is_regular_file()) {
       std::string ext = entry.path().extension().string();
@@ -601,12 +603,60 @@ static void build_library_list(SortMode mode) {
             
             g_book_metadata[p] = {t, a, (uint64_t)mtime};
             cache_changed = true;
+
+            std::string sanitized_t = t;
+            std::string sanitized_a = a;
+            const char* invalid_chars = "\\/:*?\"<>|";
+            for (char& c : sanitized_t) { if (strchr(invalid_chars, c)) c = '_'; }
+            for (char& c : sanitized_a) { if (strchr(invalid_chars, c)) c = '_'; }
+            
+            std::string desired_fn = sanitized_t + " - " + sanitized_a + ext;
+            std::string new_path = entry.path().parent_path().string() + "/" + desired_fn;
+            if (p != new_path) pending_renames.push_back({p, new_path});
         }
       }
     }
   }
 
-  if (cache_changed) save_metadata_cache();
+  for (auto& rename_pair : pending_renames) {
+      std::string old_p = rename_pair.first;
+      std::string new_path = rename_pair.second;
+      
+      int counter = 1;
+      std::string ext = std::filesystem::path(old_p).extension().string();
+      std::string base_name = std::filesystem::path(new_path).stem().string();
+      std::string parent_dir = std::filesystem::path(old_p).parent_path().string();
+      
+      while (std::filesystem::exists(new_path) && old_p != new_path) {
+          new_path = parent_dir + "/" + base_name + " (" + std::to_string(counter++) + ")" + ext;
+      }
+      
+      if (old_p != new_path) {
+          try {
+              std::filesystem::rename(old_p, new_path);
+              
+              for (auto& f : temp_files) {
+                  if (f == old_p) { f = new_path; break; }
+              }
+              
+              if (g_reading_state.last_book_path == old_p) g_reading_state.last_book_path = new_path;
+              if (g_reading_state.book_pages.count(old_p)) {
+                  g_reading_state.book_pages[new_path] = g_reading_state.book_pages[old_p];
+                  g_reading_state.book_pages.erase(old_p);
+              }
+              
+              g_book_metadata[new_path] = g_book_metadata[old_p];
+              g_book_metadata.erase(old_p);
+              
+              cache_changed = true;
+          } catch(...) {}
+      }
+  }
+
+  if (cache_changed) {
+      save_metadata_cache();
+      save_reading_state();
+  }
 
   if (mode == SORT_BY_TITLE) {
       std::sort(temp_files.begin(), temp_files.end(), [](const std::string& a, const std::string& b) {
@@ -631,13 +681,20 @@ static void build_library_list(SortMode mode) {
 
       lv_obj_t *btn = create_styled_btn(row);
       lv_obj_set_size(btn, 320, LV_SIZE_CONTENT);
+      lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
+      lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
       lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_CLICKED, (void *)book_filepaths.back().c_str());
-      lv_obj_t *lbl = lv_label_create(btn);
-      std::string display_text = g_book_metadata[path_str].title + " - " + g_book_metadata[path_str].author;
-      lv_label_set_text(lbl, display_text.c_str());
-      lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
-      lv_obj_set_width(lbl, 300);
-      lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 10, 0);
+      
+      lv_obj_t *lbl_title = lv_label_create(btn);
+      lv_label_set_text(lbl_title, g_book_metadata[path_str].title.c_str());
+      lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_DOT);
+      lv_obj_set_width(lbl_title, 280);
+
+      lv_obj_t *lbl_author = lv_label_create(btn);
+      lv_label_set_text(lbl_author, g_book_metadata[path_str].author.c_str());
+      lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_DOT);
+      lv_obj_set_width(lbl_author, 280);
+      lv_obj_set_style_text_color(lbl_author, lv_color_hex(0x666666), 0); // Gray text for author
 
       lv_obj_t *rate_btn = create_styled_btn(row);
       lv_obj_set_size(rate_btn, 80, LV_SIZE_CONTENT);

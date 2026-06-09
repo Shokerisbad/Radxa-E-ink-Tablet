@@ -1,37 +1,41 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include "lvgl/lvgl.h"
 #include <chrono>
 #include <sstream>
 #include <fstream>
-#include <memory>
-#include <array>
-#include <cstdio>
+#include <string>
+#include <gpiod.h>
+#include "lvgl/lvgl.h"
 
 static inline int get_sysfs_gpio_number(const std::string& pin_name) {
-    std::string cmd = "gpiofind " + pin_name + " 2>/dev/null";
-    std::array<char, 128> buffer;
-    std::string res;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe) return -1;
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        res += buffer.data();
-    }
-    if (res.empty()) return -1;
+    struct gpiod_line *line = gpiod_line_find(pin_name.c_str());
+    if (!line) return -1;
     
-    char chip_name[32];
-    int offset;
-    if (sscanf(res.c_str(), "%31s %d", chip_name, &offset) != 2) return -1;
-
+    unsigned int offset = gpiod_line_offset(line);
+    struct gpiod_chip *chip = gpiod_line_get_chip(line);
+    if (!chip) return -1;
+    
+    const char* chip_name = gpiod_chip_name(chip);
+    if (!chip_name) {
+        gpiod_chip_close(chip);
+        return -1;
+    }
+    
     std::string base_path = std::string("/sys/class/gpio/") + chip_name + "/base";
     std::ifstream base_file(base_path);
-    if (!base_file.is_open()) return -1;
+    int base = -1;
+    if (base_file.is_open()) {
+        base_file >> base;
+    }
     
-    int base;
-    base_file >> base;
-    return base + offset;
+    // Crucial: close the chip to release the libgpiod lock on sysfs!
+    gpiod_chip_close(chip);
+    
+    if (base != -1) {
+        return base + offset;
+    }
+    return -1;
 }
 
 // GPIO Configuration (Physical Pin Numbers)

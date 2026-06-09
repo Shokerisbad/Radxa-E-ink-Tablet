@@ -4,6 +4,35 @@
 #include <string>
 #include "lvgl/lvgl.h"
 #include <chrono>
+#include <sstream>
+#include <fstream>
+#include <memory>
+#include <array>
+#include <cstdio>
+
+static inline int get_sysfs_gpio_number(const std::string& pin_name) {
+    std::string cmd = "gpiofind " + pin_name + " 2>/dev/null";
+    std::array<char, 128> buffer;
+    std::string res;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (!pipe) return -1;
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        res += buffer.data();
+    }
+    if (res.empty()) return -1;
+    
+    char chip_name[32];
+    int offset;
+    if (sscanf(res.c_str(), "%31s %d", chip_name, &offset) != 2) return -1;
+
+    std::string base_path = std::string("/sys/class/gpio/") + chip_name + "/base";
+    std::ifstream base_file(base_path);
+    if (!base_file.is_open()) return -1;
+    
+    int base;
+    base_file >> base;
+    return base + offset;
+}
 
 // GPIO Configuration (Physical Pin Numbers)
 #define TOUCH_PIN_RST "PIN_37"
@@ -35,10 +64,6 @@ private:
 
     int i2c_fd;
     uint8_t i2c_addr;
-
-    // libgpiod resources
-    struct gpiod_line *line_rst;
-    struct gpiod_line *line_int;
 
     int last_x;
     int last_y;

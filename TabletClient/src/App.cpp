@@ -13,6 +13,7 @@
 #include "App.h"
 #include "lvgl/lvgl.h"
 #include "../RadxaEPD.h"
+#include "../RadxaTouch.h"
 
 #include "epubHandler.h"
 #include "pdfHandler.h"
@@ -913,11 +914,24 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     if (inactive_time > 10000) {
         std::cout << "Inactivity timeout reached! Suspending system..." << std::endl;
         
-        // Configure Touch INT (Pin 35 / GPIOAO_8 / 420) as a wakeup source
-        system("echo 420 > /sys/class/gpio/export 2>/dev/null");
-        system("echo in > /sys/class/gpio/gpio420/direction 2>/dev/null");
-        system("echo falling > /sys/class/gpio/gpio420/edge 2>/dev/null");
-        system("echo enabled > /sys/class/gpio/gpio420/power/wakeup 2>/dev/null");
+        // Configure Touch INT (Pin 35 / GPIOAO_8) as a wakeup source
+        int gpio_num = get_sysfs_gpio_number(TOUCH_PIN_INT);
+        if (gpio_num != -1) {
+            std::string sysfs_base = "/sys/class/gpio/gpio" + std::to_string(gpio_num);
+            std::string export_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/export 2>/dev/null";
+            system(export_cmd.c_str());
+            
+            std::string dir_cmd = "echo in > " + sysfs_base + "/direction 2>/dev/null";
+            system(dir_cmd.c_str());
+            
+            std::string edge_cmd = "echo falling > " + sysfs_base + "/edge 2>/dev/null";
+            system(edge_cmd.c_str());
+            
+            std::string wakeup_cmd = "echo enabled > " + sysfs_base + "/power/wakeup 2>/dev/null";
+            system(wakeup_cmd.c_str());
+        } else {
+            std::cerr << "Failed to find sysfs number for " << TOUCH_PIN_INT << std::endl;
+        }
         
         // Reset the LVGL inactivity timer so it doesn't immediately sleep again upon waking
         lv_disp_trig_activity(NULL); 

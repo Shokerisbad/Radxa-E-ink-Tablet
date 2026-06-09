@@ -187,8 +187,6 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, LV_STATE_PRESSED);
     lv_obj_set_style_anim_duration(btn, 0, 0); // Disable state transition animations
-    lv_obj_set_style_transition(btn, NULL, 0);
-    lv_obj_set_style_transition(btn, NULL, LV_STATE_PRESSED);
     lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
     return btn;
 }
@@ -246,8 +244,6 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
   lv_obj_set_style_translate_y(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_anim_duration(row, 0, 0);
-  lv_obj_set_style_transition(row, NULL, 0);
-  lv_obj_set_style_transition(row, NULL, LV_STATE_PRESSED);
   lv_obj_remove_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
 
   return row;
@@ -301,7 +297,8 @@ static void update_continue_reading_button() {
     std::string continue_subtitle = "No book";
     
     // Remove all click events first to prevent duplicate callbacks
-    lv_obj_remove_event_cb(btn_continue_reading, NULL);
+    lv_obj_remove_event_cb(btn_continue_reading, load_screen_cb);
+    lv_obj_remove_event_cb(btn_continue_reading, book_clicked_cb);
     
     if (!g_reading_state.last_book_path.empty()) {
         if (g_book_metadata.count(g_reading_state.last_book_path)) {
@@ -1618,35 +1615,6 @@ static void wifi_connect_cb(lv_event_t * e) {
     if(wifi_pwd_modal) {
         lv_obj_del(wifi_pwd_modal);
         wifi_pwd_modal = nullptr;
-        wifi_kb = nullptr;
-        wifi_pwd_ta = nullptr;
-    }
-}
-
-static void wifi_ssid_clicked_cb(lv_event_t * e) {
-    lv_obj_t * btn = (lv_obj_t *)lv_event_get_target(e);
-    // Find the text label inside the list button. List buttons usually have an icon label and a text label.
-    // The second child is typically the text label.
-    uint32_t child_cnt = lv_obj_get_child_cnt(btn);
-    for (uint32_t i = 0; i < child_cnt; i++) {
-        lv_obj_t * child = lv_obj_get_child(btn, i);
-        if (lv_obj_check_type(child, &lv_label_class)) {
-            std::string txt = lv_label_get_text(child);
-            if (txt != LV_SYMBOL_WIFI) {
-                target_ssid = txt;
-            }
-        }
-    }
-
-    if(target_ssid.empty()) return;
-
-    // Create password modal
-    wifi_pwd_modal = create_white_container(lv_layer_top());
-    lv_obj_set_size(wifi_pwd_modal, 400, 380);
-    lv_obj_center(wifi_pwd_modal);
-    lv_obj_set_style_border_color(wifi_pwd_modal, lv_color_black(), 0);
-    lv_obj_set_style_border_width(wifi_pwd_modal, 2, 0);
-    lv_obj_set_flex_flow(wifi_pwd_modal, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t * title = lv_label_create(wifi_pwd_modal);
     lv_label_set_text_fmt(title, "Connect to:\n%s", target_ssid.c_str());

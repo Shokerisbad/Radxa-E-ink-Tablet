@@ -3,6 +3,13 @@
 #include <string>
 #include <vector>
 
+struct EpubChapter {
+  std::string title;
+  std::string src_file;
+  int page_number;
+  size_t offset;
+};
+
 class EpubHandler {
 public:
   EpubHandler();
@@ -20,6 +27,9 @@ public:
   // Get the content (current page text)
   std::string getContent() const;
 
+  // Get Table of Contents
+  const std::vector<EpubChapter>& getTableOfContents() const;
+
   void nextPage();
   void prevPage();
   void jumpToPage(int page);
@@ -30,16 +40,22 @@ public:
   bool hasNextPage() const;
   bool hasPrevPage() const;
 
+  void repaginate(int chars_per_line, int line_height);
+
 private:
   std::string m_filepath;
   std::string m_title;
   std::vector<std::string> m_pages;
   int m_currentPage;
   bool m_isLoaded;
+  std::vector<EpubChapter> m_toc;
 
   std::string readZipFile(struct zip *z, const std::string &filepath);
   std::string stripHtmlTags(const std::string &html,
                             const std::string &bookTitle);
   std::string replaceUtf8Characters(const std::string &str);
-  void paginateText(const std::string &text);
+  void paginateText(const std::string &text, int chars_per_line, int line_height);
+
+  std::string m_fullText;
+  std::vector<size_t> m_pageOffsets;
 };

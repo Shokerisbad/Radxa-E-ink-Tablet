@@ -87,40 +87,54 @@ void create_status_bar() {
     lv_label_set_text_fmt(time_label, "%02d:%02d", tm_init.tm_hour, tm_init.tm_min);
     lv_obj_align(time_label, LV_ALIGN_CENTER, 0, 0);
 
-    // Create a timer to update these statuses
-    static lv_obj_t* status_labels[4] = {wifi_label, vpn_label, batt_label, time_label};
-    lv_timer_create([](lv_timer_t * timer) {
-        lv_obj_t ** labels = (lv_obj_t **)lv_timer_get_user_data(timer);
-        lv_obj_t * w_lbl = labels[0];
-        lv_obj_t * v_lbl = labels[1];
-        lv_obj_t * b_lbl = labels[2];
-        lv_obj_t * t_lbl = labels[3];
+    // Expose labels for manual updates
+    extern void init_status_bar_labels(lv_obj_t* w, lv_obj_t* v, lv_obj_t* b, lv_obj_t* t);
+    init_status_bar_labels(wifi_label, vpn_label, batt_label, time_label);
+}
 
-        // Update Wi-Fi
-        if (RadxaEPD::is_wifi_connected()) {
-            lv_label_set_text(w_lbl, LV_SYMBOL_WIFI);
-        } else {
-            lv_label_set_text(w_lbl, "No WiFi");
+static lv_obj_t* g_w_lbl = nullptr;
+static lv_obj_t* g_v_lbl = nullptr;
+static lv_obj_t* g_b_lbl = nullptr;
+static lv_obj_t* g_t_lbl = nullptr;
+
+void init_status_bar_labels(lv_obj_t* w, lv_obj_t* v, lv_obj_t* b, lv_obj_t* t) {
+    g_w_lbl = w;
+    g_v_lbl = v;
+    g_b_lbl = b;
+    g_t_lbl = t;
+}
+
+void update_status_bar() {
+    if (!g_w_lbl || !g_v_lbl || !g_b_lbl || !g_t_lbl) return;
+
+    // Update Wi-Fi
+    if (RadxaEPD::is_wifi_connected()) {
+        lv_label_set_text(g_w_lbl, LV_SYMBOL_WIFI);
+    } else {
+        lv_label_set_text(g_w_lbl, "No WiFi");
+    }
+
+    // Update VPN
+    if (RadxaEPD::is_wireguard_connected()) {
+        lv_label_set_text(g_v_lbl, LV_SYMBOL_DUMMY " VPN"); // LV_SYMBOL_DUMMY or custom icon
+    } else {
+        lv_label_set_text(g_v_lbl, "");
+    }
+
+    // Update Battery with 5% step logic to avoid constant refreshes
+    static int last_displayed_batt = -1;
+    int batt = RadxaEPD::get_battery_percentage();
+    if (batt >= 0) {
+        if (last_displayed_batt == -1 || abs(batt - last_displayed_batt) >= 5 || batt == 100 || batt <= 5) {
+            lv_label_set_text_fmt(g_b_lbl, LV_SYMBOL_BATTERY_FULL " %d%%", batt);
+            last_displayed_batt = batt;
         }
+    }
 
-        // Update VPN
-        if (RadxaEPD::is_wireguard_connected()) {
-            lv_label_set_text(v_lbl, LV_SYMBOL_DUMMY " VPN"); // LV_SYMBOL_DUMMY or custom icon
-        } else {
-            lv_label_set_text(v_lbl, "");
-        }
-
-        // Update Battery
-        int batt = RadxaEPD::get_battery_percentage();
-        if (batt >= 0) {
-            lv_label_set_text_fmt(b_lbl, LV_SYMBOL_BATTERY_FULL " %d%%", batt);
-        }
-
-        // Update Time
-        time_t t = time(NULL);
-        struct tm tm = *localtime(&t);
-        lv_label_set_text_fmt(t_lbl, "%02d:%02d", tm.tm_hour, tm.tm_min);
-    }, 60000, status_labels); // Update every minute
+    // Update Time
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+    lv_label_set_text_fmt(g_t_lbl, "%02d:%02d", tm.tm_hour, tm.tm_min);
 }
 
 int main(void) {

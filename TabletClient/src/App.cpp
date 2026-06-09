@@ -2,9 +2,18 @@
 // WIN32_LEAN_AND_MEAN must be defined BEFORE Windows.h to prevent winsock.h
 // from being pulled in (which conflicts with winsock2.h used by httplib).
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <Windows.h>
+#define popen _popen
+#define pclose _pclose
+bool g_dark_mode = false;
+void update_status_bar() {}
+#endif
+
+#ifndef LV_SYMBOL_ADJUST
+#define LV_SYMBOL_ADJUST LV_SYMBOL_TINT
 #endif
 #ifndef _WIN32
 #include <unistd.h>
@@ -39,6 +48,36 @@
 using json = nlohmann::json;
 
 std::recursive_mutex lvgl_mutex;
+
+// --- GLOBAL VARIABLES & SCREENS ---
+lv_obj_t *screen_main = nullptr;
+lv_obj_t *screen_library = nullptr;
+lv_obj_t *screen_book_reader = nullptr;
+lv_obj_t *screen_ai = nullptr;
+lv_obj_t *screen_settings = nullptr;
+
+lv_obj_t *reader_title_label = nullptr;
+lv_obj_t *reader_content_label = nullptr;
+lv_obj_t *reader_topbar = nullptr;
+lv_obj_t *reader_bottombar = nullptr;
+lv_obj_t *reader_bottom_menu = nullptr;
+lv_obj_t *reader_img = nullptr;
+lv_obj_t *ai_content = nullptr;
+lv_obj_t *ai_input_ta = nullptr;
+lv_obj_t *reader_page_label = nullptr;
+std::vector<std::string> book_filepaths;
+lv_obj_t *book_list = nullptr;
+
+static lv_obj_t* continue_subtitle_label = nullptr;
+static lv_obj_t* btn_continue_reading = nullptr;
+
+static EpubHandler *current_epub = nullptr;
+static PdfHandler *current_pdf = nullptr;
+static bool is_epub_active = false;
+static bool is_bottombar_visible = false;
+
+static const lv_style_prop_t trans_props[] = { LV_STYLE_PROP_INV };
+static lv_style_transition_dsc_t no_trans_dsc;
 
 // --- IMAGE UTILITIES ---
 static void write_bmp_cover(const char* filename, int w, int h, int comp, const unsigned char* data) {
@@ -77,6 +116,22 @@ static void write_bmp_cover(const char* filename, int w, int h, int comp, const 
         for (int p = 0; p < pad; p++) fputc(0, f);
     }
     fclose(f);
+}
+
+
+// --- TYPOGRAPHY ---
+std::vector<TypographySettings> g_font_options = {
+    {&lv_font_montserrat_14, 65, 16, "Small (14pt)"},
+    {&lv_font_montserrat_20, 45, 24, "Medium (20pt)"},
+    {&lv_font_montserrat_24, 38, 28, "Large (24pt)"},
+    {&lv_font_montserrat_26, 35, 32, "Extra Large (26pt)"}
+};
+int g_current_font_index = 0;
+
+static void apply_typography() {
+    if (reader_content_label && g_current_font_index >= 0 && g_current_font_index < g_font_options.size()) {
+        lv_obj_set_style_text_font(reader_content_label, g_font_options[g_current_font_index].font, 0);
+    }
 }
 
 // --- READING TRACKER DATA ---
@@ -118,6 +173,7 @@ static void save_reading_state() {
         j["last_book_path"] = g_reading_state.last_book_path;
         j["book_pages"] = g_reading_state.book_pages;
         j["book_total_pages"] = g_reading_state.book_total_pages;
+        j["font_index"] = g_current_font_index;
         std::ofstream f(path);
         f << j.dump(4);
     } catch (...) {}
@@ -200,6 +256,8 @@ static lv_obj_t * create_white_container(lv_obj_t * parent) {
     lv_obj_set_style_radius(cont, 0, 0);
     lv_obj_set_style_pad_all(cont, 0, 0);
     lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_OFF); // Disable scrollbar fade animations
+    lv_obj_remove_flag(cont, LV_OBJ_FLAG_SCROLL_ELASTIC); // Disable e-ink scroll animations
+    lv_obj_remove_flag(cont, LV_OBJ_FLAG_SCROLL_MOMENTUM);
     return cont;
 }
 
@@ -281,15 +339,6 @@ static void checkAndClearCache() {
 }
 
 // --- E-INK APP UI PLUMBING ---
-
-// Global screens
-lv_obj_t *screen_main;
-lv_obj_t *screen_library;
-lv_obj_t *screen_book_reader;
-lv_obj_t *screen_ai;
-
-static lv_obj_t* continue_subtitle_label = nullptr;
-static lv_obj_t* btn_continue_reading = nullptr;
 static void book_clicked_cb(lv_event_t *e); // Forward declaration
 static void load_screen_cb(lv_event_t *e);  // Forward declaration
 
@@ -322,23 +371,7 @@ static void load_screen_cb(lv_event_t *e) {
   lv_scr_load(target);
 }
 
-// Globals for reader updates
-lv_obj_t *reader_title_label;
-lv_obj_t *reader_content_label;
-lv_obj_t *reader_topbar; // Made global to toggle hidden state
-lv_obj_t *reader_bottombar; // Made global to toggle hidden state
-lv_obj_t *reader_bottom_menu; // Menu container that gets toggled
-lv_obj_t *reader_img;       // Added for EPUB images
-lv_obj_t *ai_content = NULL;   // AI screen results container
-lv_obj_t *ai_input_ta = NULL;  // AI screen text input
-lv_obj_t *reader_page_label = NULL; // Page counter label (e.g. "3 / 42")
-std::vector<std::string> book_filepaths;
-lv_obj_t *book_list = NULL;
 
-static EpubHandler *current_epub = nullptr;
-static PdfHandler *current_pdf = nullptr;
-static bool is_epub_active = false;
-static bool is_bottombar_visible = false; // Track toggle state
 
 static void build_library_list(SortMode mode = SORT_BY_TITLE); // Forward declaration
 static void request_ai_recommendation(const std::string &user_prompt, bool exact_match = false, bool use_reviews = true);
@@ -569,6 +602,190 @@ static void hide_bottombar_cb(lv_event_t *e) {
 
 static void jump_btn_cb(lv_event_t *e); // Forward declaration
 
+
+static lv_obj_t* chapters_modal = nullptr;
+static lv_obj_t* chapters_list = nullptr;
+static int current_chapters_page = 0;
+const int CHAPTERS_PER_PAGE = 7;
+
+static void populate_chapters_list(); // Forward declaration
+
+static void chapter_clicked_cb(lv_event_t *e) {
+    int page = (int)(intptr_t)lv_event_get_user_data(e);
+    if (is_epub_active && current_epub) {
+        current_epub->jumpToPage(page);
+        g_reading_state.book_pages[g_reading_state.last_book_path] = current_epub->getCurrentPage();
+        save_reading_state();
+        update_reader_ui();
+        update_status_bar();
+    }
+    if (chapters_modal) {
+        lv_obj_del(chapters_modal);
+        chapters_modal = nullptr;
+        chapters_list = nullptr;
+    }
+}
+
+static void close_chapters_modal_cb(lv_event_t *e) {
+    if (chapters_modal) {
+        lv_obj_del(chapters_modal);
+        chapters_modal = nullptr;
+        chapters_list = nullptr;
+    }
+}
+
+static void chapters_prev_cb(lv_event_t *e) {
+    if (current_chapters_page > 0) {
+        current_chapters_page--;
+        populate_chapters_list();
+    }
+}
+
+static void chapters_next_cb(lv_event_t *e) {
+    if (!current_epub) return;
+    auto toc = current_epub->getTableOfContents();
+    int max_pages = (toc.size() + CHAPTERS_PER_PAGE - 1) / CHAPTERS_PER_PAGE;
+    if (current_chapters_page < max_pages - 1) {
+        current_chapters_page++;
+        populate_chapters_list();
+    }
+}
+
+static void populate_chapters_list() {
+    if (!chapters_list || !current_epub) return;
+    lv_obj_clean(chapters_list);
+
+    auto toc = current_epub->getTableOfContents();
+    if (toc.empty()) {
+        lv_obj_t *empty_lbl = lv_label_create(chapters_list);
+        lv_label_set_text(empty_lbl, "No chapters found.");
+        return;
+    }
+
+    int start_idx = current_chapters_page * CHAPTERS_PER_PAGE;
+    int end_idx = start_idx + CHAPTERS_PER_PAGE;
+    if (end_idx > toc.size()) end_idx = toc.size();
+
+    for (int i = start_idx; i < end_idx; i++) {
+        const auto& ch = toc[i];
+        lv_obj_t *row = create_styled_btn(chapters_list);
+        lv_obj_set_width(row, LV_PCT(100));
+        lv_obj_set_height(row, LV_SIZE_CONTENT);
+        
+        lv_obj_t *ch_title = lv_label_create(row);
+        lv_label_set_text(ch_title, ch.title.c_str());
+        lv_label_set_long_mode(ch_title, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(ch_title, LV_PCT(70));
+        lv_obj_align(ch_title, LV_ALIGN_LEFT_MID, 5, 0);
+
+        lv_obj_t *ch_page = lv_label_create(row);
+        std::string p_str = "Pg " + std::to_string(ch.page_number + 1);
+        lv_label_set_text(ch_page, p_str.c_str());
+        lv_obj_align(ch_page, LV_ALIGN_RIGHT_MID, -5, 0);
+
+        lv_obj_add_event_cb(row, chapter_clicked_cb, LV_EVENT_CLICKED, (void*)(intptr_t)ch.page_number);
+    }
+    
+    // Add pagination controls at the bottom if needed
+    int max_pages = (toc.size() + CHAPTERS_PER_PAGE - 1) / CHAPTERS_PER_PAGE;
+    if (max_pages > 1) {
+        lv_obj_t *nav_row = lv_obj_create(chapters_list);
+        lv_obj_set_width(nav_row, LV_PCT(100));
+        lv_obj_set_height(nav_row, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(nav_row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(nav_row, 0, 0);
+        lv_obj_set_style_pad_all(nav_row, 0, 0);
+        
+        lv_obj_t *btn_prev = create_styled_btn(nav_row);
+        lv_obj_align(btn_prev, LV_ALIGN_LEFT_MID, 10, 0);
+        lv_obj_t *lbl_prev = lv_label_create(btn_prev);
+        lv_label_set_text(lbl_prev, "<- Prev");
+        lv_obj_add_event_cb(btn_prev, chapters_prev_cb, LV_EVENT_CLICKED, NULL);
+        if (current_chapters_page == 0) lv_obj_add_state(btn_prev, LV_STATE_DISABLED);
+        
+        lv_obj_t *page_lbl = lv_label_create(nav_row);
+        std::string pg_text = std::to_string(current_chapters_page + 1) + " / " + std::to_string(max_pages);
+        lv_label_set_text(page_lbl, pg_text.c_str());
+        lv_obj_center(page_lbl);
+        
+        lv_obj_t *btn_next = create_styled_btn(nav_row);
+        lv_obj_align(btn_next, LV_ALIGN_RIGHT_MID, -10, 0);
+        lv_obj_t *lbl_next = lv_label_create(btn_next);
+        lv_label_set_text(lbl_next, "Next ->");
+        lv_obj_add_event_cb(btn_next, chapters_next_cb, LV_EVENT_CLICKED, NULL);
+        if (current_chapters_page >= max_pages - 1) lv_obj_add_state(btn_next, LV_STATE_DISABLED);
+    }
+}
+
+static void show_chapters_modal_cb(lv_event_t *e) {
+    if (chapters_modal) return;
+    if (!is_epub_active || !current_epub) return;
+
+    current_chapters_page = 0;
+
+    chapters_modal = create_white_container(lv_layer_top());
+    lv_obj_set_size(chapters_modal, LV_PCT(90), LV_PCT(80));
+    lv_obj_center(chapters_modal);
+    lv_obj_set_style_border_color(chapters_modal, lv_color_black(), 0);
+    lv_obj_set_style_border_width(chapters_modal, 2, 0);
+    lv_obj_set_flex_flow(chapters_modal, LV_FLEX_FLOW_COLUMN);
+
+    lv_obj_t *header_row = lv_obj_create(chapters_modal);
+    lv_obj_set_width(header_row, LV_PCT(100));
+    lv_obj_set_height(header_row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(header_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(header_row, 0, 0);
+    lv_obj_set_style_pad_all(header_row, 0, 0);
+
+    lv_obj_t *title = lv_label_create(header_row);
+    lv_label_set_text(title, "Table of Contents");
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 10, 0);
+
+    lv_obj_t *close_btn = create_styled_btn(header_row);
+    lv_obj_align(close_btn, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_t *close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, "Close");
+    lv_obj_add_event_cb(close_btn, close_chapters_modal_cb, LV_EVENT_CLICKED, NULL);
+
+    chapters_list = lv_obj_create(chapters_modal);
+    lv_obj_set_size(chapters_list, LV_PCT(100), LV_PCT(85));
+    lv_obj_set_style_bg_opa(chapters_list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(chapters_list, 0, 0);
+    lv_obj_set_flex_flow(chapters_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_clear_flag(chapters_list, LV_OBJ_FLAG_SCROLLABLE); // Disable kinetic scrolling
+
+    populate_chapters_list();
+}
+
+#include "../RadxaEPD.h"
+
+static void font_size_toggle_cb(lv_event_t * e) {
+    lv_obj_t * row = (lv_obj_t *)lv_event_get_target(e);
+    g_current_font_index = (g_current_font_index + 1) % g_font_options.size();
+    
+    // Update label
+    lv_obj_t * subtitle = (lv_obj_t *)lv_obj_get_child(row, 2);
+    if (subtitle) {
+        lv_label_set_text(subtitle, g_font_options[g_current_font_index].name.c_str());
+    }
+
+    apply_typography();
+    
+    if (is_epub_active && current_epub) {
+        current_epub->repaginate(g_font_options[g_current_font_index].chars_per_line, g_font_options[g_current_font_index].line_height);
+        g_reading_state.book_total_pages[g_reading_state.last_book_path] = current_epub->getTotalPages();
+        update_reader_ui();
+        update_status_bar();
+    }
+    save_reading_state();
+}
+
+static void dark_mode_toggle_cb(lv_event_t * e) {
+    g_dark_mode = !g_dark_mode;
+    lv_obj_invalidate(lv_scr_act());
+}
+
+
 static void book_clicked_cb(lv_event_t *e) {
   const char *filepath_ptr = (const char *)lv_event_get_user_data(e);
   std::string filepath_str;
@@ -590,6 +807,7 @@ static void book_clicked_cb(lv_event_t *e) {
       delete current_epub;
     current_epub = new EpubHandler();
     current_epub->loadEpub(filepath);
+    current_epub->repaginate(g_font_options[g_current_font_index].chars_per_line, g_font_options[g_current_font_index].line_height);
     is_epub_active = true;
     g_reading_state.book_total_pages[filepath] = current_epub->getTotalPages();
   } else if (ext == ".pdf") {
@@ -943,7 +1161,148 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     */
 }
 
+
+// --- DICTIONARY MODAL ---
+static lv_obj_t* dict_modal = nullptr;
+
+struct DictPayload {
+    std::string word;
+    std::string definition;
+    bool success;
+};
+
+static void dict_modal_close_cb(lv_event_t * e) {
+    if (dict_modal) {
+        lv_obj_del(dict_modal);
+        dict_modal = nullptr;
+    }
+    if (reader_content_label) {
+        lv_label_set_text_selection_start(reader_content_label, LV_DRAW_LABEL_NO_TXT_SEL);
+        lv_label_set_text_selection_end(reader_content_label, LV_DRAW_LABEL_NO_TXT_SEL);
+    }
+}
+
+static void render_dict_async_cb(void * user_data) {
+    DictPayload *p = (DictPayload*)user_data;
+    if (dict_modal) {
+        lv_obj_t * def_label = lv_obj_get_child(dict_modal, 1);
+        if (def_label && lv_obj_check_type(def_label, &lv_label_class)) {
+            lv_label_set_text(def_label, p->success ? p->definition.c_str() : "Definition not found.");
+        }
+    }
+    delete p;
+    update_status_bar();
+}
+
+static void fetch_dict_bg(std::string word) {
+    std::thread([word]() {
+        DictPayload *p = new DictPayload{word, "", false};
+        
+        std::string cmd = "curl -s \"https://api.dictionaryapi.dev/api/v2/entries/en/\" + word + \"\"";
+        FILE* fp = popen(cmd.c_str(), "r");
+        if (fp) {
+            char buffer[512];
+            std::string response;
+            while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+                response += buffer;
+            }
+            pclose(fp);
+            
+            try {
+                json j = json::parse(response);
+                if (j.is_array() && j.size() > 0) {
+                    auto meanings = j[0]["meanings"];
+                    if (meanings.is_array() && meanings.size() > 0) {
+                        auto defs = meanings[0]["definitions"];
+                        if (defs.is_array() && defs.size() > 0) {
+                            p->definition = defs[0]["definition"].get<std::string>();
+                            p->success = true;
+                        }
+                    }
+                }
+            } catch (...) {}
+        }
+        
+        lv_async_call(render_dict_async_cb, p);
+    }).detach();
+}
+
+static void reader_label_clicked_cb(lv_event_t * e) {
+    if (!reader_content_label) return;
+    
+    lv_indev_t * indev = lv_indev_active();
+    if (!indev) return;
+    
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    
+    lv_area_t coords;
+    lv_obj_get_coords(reader_content_label, &coords);
+    p.x -= coords.x1;
+    p.y -= coords.y1;
+    
+    uint32_t char_idx = lv_label_get_letter_on(reader_content_label, &p, false);
+    
+    std::string text = lv_label_get_text(reader_content_label);
+    if (char_idx >= text.length()) return;
+    
+    auto is_boundary = [](char c) {
+        return c == ' ' || c == '\n' || c == '\t' || c == '.' || c == ',' || 
+               c == '!' || c == '?' || c == ';' || c == ':' || c == '"' || 
+               c == '\'' || c == '(' || c == ')';
+    };
+    
+    int start_idx = char_idx;
+    int end_idx = char_idx;
+    
+    while (start_idx > 0 && !is_boundary(text[start_idx - 1])) start_idx--;
+    while (end_idx < text.length() && !is_boundary(text[end_idx])) end_idx++;
+    
+    if (start_idx >= end_idx) return;
+    
+    std::string word = text.substr(start_idx, end_idx - start_idx);
+    
+    lv_label_set_text_selection_start(reader_content_label, start_idx);
+    lv_label_set_text_selection_end(reader_content_label, end_idx);
+    
+    if (dict_modal) {
+        lv_obj_del(dict_modal);
+        dict_modal = nullptr;
+    }
+    
+    dict_modal = create_white_container(screen_book_reader);
+    lv_obj_set_size(dict_modal, LV_PCT(90), 200);
+    lv_obj_align(dict_modal, LV_ALIGN_BOTTOM_MID, 0, -60);
+    lv_obj_set_style_border_color(dict_modal, lv_color_black(), 0);
+    lv_obj_set_style_border_width(dict_modal, 2, 0);
+    lv_obj_set_flex_flow(dict_modal, LV_FLEX_FLOW_COLUMN);
+    
+    lv_obj_t * header = lv_obj_create(dict_modal);
+    lv_obj_set_size(header, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_all(header, 0, 0);
+    lv_obj_set_style_border_width(header, 0, 0);
+    
+    lv_obj_t * title = lv_label_create(header);
+    std::string title_str = "Dictionary: " + word;
+    lv_label_set_text(title, title_str.c_str());
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 0, 0);
+    
+    lv_obj_t * close_btn = create_styled_btn(header);
+    lv_obj_align(close_btn, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_t * close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, "X");
+    lv_obj_add_event_cb(close_btn, dict_modal_close_cb, LV_EVENT_CLICKED, NULL);
+    
+    lv_obj_t * def_label = lv_label_create(dict_modal);
+    lv_label_set_long_mode(def_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(def_label, LV_PCT(100));
+    lv_label_set_text(def_label, "Fetching definition...");
+    
+    fetch_dict_bg(word);
+}
+
 void build_tablet_ui() {
+  lv_style_transition_dsc_init(&no_trans_dsc, trans_props, NULL, 0, 0, NULL);
   load_reading_state();
   checkAndClearCache();
   screen_main = lv_obj_create(NULL);
@@ -961,6 +1320,17 @@ void build_tablet_ui() {
   screen_ai = lv_obj_create(NULL);
   lv_obj_set_style_bg_color(screen_ai, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_scrollbar_mode(screen_ai, LV_SCROLLBAR_MODE_OFF);
+
+  screen_settings = lv_obj_create(NULL);
+  lv_obj_set_style_bg_color(screen_settings, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_scrollbar_mode(screen_settings, LV_SCROLLBAR_MODE_OFF);
+  
+  lv_obj_set_style_bg_color(screen_settings, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(screen_settings, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_text_color(screen_settings, lv_color_black(), LV_PART_MAIN);
+  lv_obj_add_flag(screen_settings, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(screen_settings, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(screen_settings, global_gesture_cb, LV_EVENT_GESTURE, NULL);
 
   // Apply white background to all screens
   lv_obj_set_style_bg_color(screen_main, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
@@ -991,6 +1361,8 @@ void build_tablet_ui() {
   lv_obj_add_flag(screen_ai, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_clear_flag(screen_ai, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(screen_ai, global_gesture_cb, LV_EVENT_GESTURE, NULL);
+
+  lv_obj_clear_flag(screen_main, LV_OBJ_FLAG_SCROLLABLE);
 
   // Toggle bottom bar when clicking anywhere on the background of the read
   // screen
@@ -1071,14 +1443,44 @@ void build_tablet_ui() {
   lv_obj_t* row_ai = create_menu_row(list_cont, LV_SYMBOL_EDIT, "AI Assistant", "Active");
   lv_obj_add_event_cb(row_ai, load_screen_cb, LV_EVENT_CLICKED, screen_ai);
 
-  // Row 5: Settings / Dashboard URL
+  // Row 5: Settings
+  lv_obj_t* row_settings = create_menu_row(list_cont, LV_SYMBOL_SETTINGS, "Settings", "Device Options");
+  lv_obj_add_event_cb(row_settings, load_screen_cb, LV_EVENT_CLICKED, screen_settings);
+
+
+  // --- SETTINGS SCREEN ---
+  lv_obj_t *settings_title = lv_label_create(screen_settings);
+  lv_label_set_text(settings_title, "Settings");
+  lv_obj_align(settings_title, LV_ALIGN_TOP_MID, 0, 45); 
+
+  lv_obj_t *settings_back = create_styled_btn(screen_settings);
+  lv_obj_align(settings_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
+  lv_obj_add_event_cb(settings_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
+  lv_obj_t *lbl_settings_back = lv_label_create(settings_back);
+  lv_label_set_text(lbl_settings_back, LV_SYMBOL_HOME);
+  lv_obj_center(lbl_settings_back);
+
+  lv_obj_t *settings_cont = create_white_container(screen_settings);
+  lv_obj_set_size(settings_cont, 440, 600);
+  lv_obj_align(settings_cont, LV_ALIGN_TOP_MID, 0, 100);
+  lv_obj_set_flex_flow(settings_cont, LV_FLEX_FLOW_COLUMN);
+
+
+  lv_obj_t *row_font = create_menu_row(settings_cont, LV_SYMBOL_EDIT, "Font Size", g_font_options[g_current_font_index].name.c_str());
+  lv_obj_add_event_cb(row_font, font_size_toggle_cb, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *row_dark = create_menu_row(settings_cont, LV_SYMBOL_ADJUST, "Dark Mode", "Toggle inverted rendering");
+  lv_obj_add_event_cb(row_dark, dark_mode_toggle_cb, LV_EVENT_CLICKED, NULL);
+  
   char hostname[256];
   std::string dash_url = "radxa-zero.local";
   if (gethostname(hostname, sizeof(hostname)) == 0) {
       dash_url = std::string(hostname) + ".local:8080";
   }
-  lv_obj_t* row_dash = create_menu_row(list_cont, LV_SYMBOL_SETTINGS, "Dashboard", dash_url.c_str());
-  lv_obj_remove_flag(row_dash, LV_OBJ_FLAG_CLICKABLE); // Just info
+  lv_obj_t *row_dash_info = create_menu_row(settings_cont, LV_SYMBOL_WIFI, "Web Dashboard", dash_url.c_str());
+  lv_obj_remove_flag(row_dash_info, LV_OBJ_FLAG_CLICKABLE);
+  
+  // --- END SETTINGS SCREEN ---
 
   // --- LIBRARY SCREEN ---
   lv_obj_t *lib_title = lv_label_create(screen_library);
@@ -1135,16 +1537,42 @@ void build_tablet_ui() {
   lv_label_set_long_mode(reader_content_label, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(reader_content_label, 460);
   lv_label_set_text(reader_content_label, "Select a book from the library to begin reading.");
+  apply_typography();
+  lv_obj_add_flag(reader_content_label, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(reader_content_label, reader_label_clicked_cb, LV_EVENT_CLICKED, NULL);
 
-  // Top Bar (Toggled with bottom menu)
-  reader_topbar = create_white_container(screen_book_reader);
+  // Top Toolbar container (Transparent tap zone)
+  lv_obj_t* reader_top_tapzone = create_white_container(screen_book_reader);
+  lv_obj_set_size(reader_top_tapzone, LV_PCT(100), 90); // 30 status + 60
+  lv_obj_align(reader_top_tapzone, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_bg_opa(reader_top_tapzone, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(reader_top_tapzone, 0, 0);
+  lv_obj_add_event_cb(reader_top_tapzone, bottombar_tap_cb, LV_EVENT_CLICKED, NULL);
+
+  // Top Menu (Opaque container)
+  reader_topbar = create_white_container(reader_top_tapzone);
   lv_obj_set_size(reader_topbar, LV_PCT(100), 60);
-  lv_obj_align(reader_topbar, LV_ALIGN_TOP_MID, 0, 30);
+  lv_obj_align(reader_topbar, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_add_flag(reader_topbar, LV_OBJ_FLAG_HIDDEN); // Hidden by default
 
   reader_title_label = lv_label_create(reader_topbar);
   lv_label_set_text(reader_title_label, "Reading Book...");
+  lv_label_set_long_mode(reader_title_label, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(reader_title_label, 200);
   lv_obj_align(reader_title_label, LV_ALIGN_CENTER, 0, 0);
+
+  lv_obj_t *btn_chapters = create_styled_btn(reader_topbar);
+  lv_obj_align(btn_chapters, LV_ALIGN_LEFT_MID, 10, 0);
+  lv_obj_t *lbl_chapters = lv_label_create(btn_chapters);
+  lv_label_set_text(lbl_chapters, LV_SYMBOL_LIST " Chapters");
+  lv_obj_add_event_cb(btn_chapters, show_chapters_modal_cb, LV_EVENT_CLICKED, NULL);
+
+
+  lv_obj_t *btn_dark = create_styled_btn(reader_topbar);
+  lv_obj_align(btn_dark, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_t *lbl_dark = lv_label_create(btn_dark);
+  lv_label_set_text(lbl_dark, LV_SYMBOL_ADJUST);
+  lv_obj_add_event_cb(btn_dark, dark_mode_toggle_cb, LV_EVENT_CLICKED, NULL);
 
   // Content label already created above
 
@@ -1663,13 +2091,21 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     lv_obj_set_width(wifi_pwd_ta, LV_PCT(90));
     lv_obj_set_style_border_width(wifi_pwd_ta, 2, LV_PART_MAIN);
     lv_obj_set_style_border_color(wifi_pwd_ta, lv_color_black(), LV_PART_MAIN);
+    // Disable blinking cursor to prevent infinite e-ink refresh loops!
+    lv_obj_set_style_anim_duration(wifi_pwd_ta, 0, LV_PART_CURSOR);
+    lv_obj_set_style_opa(wifi_pwd_ta, 0, LV_PART_CURSOR);
 
     // Keyboard
     wifi_kb = lv_keyboard_create(wifi_pwd_modal);
     lv_keyboard_set_textarea(wifi_kb, wifi_pwd_ta);
     // Disable pressed animation on keyboard buttons for E-ink
+    lv_obj_set_style_anim_duration(wifi_kb, 0, LV_PART_ITEMS);
+    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS);
+    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_bg_color(wifi_kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_text_color(wifi_kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_transform_width(wifi_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_transform_height(wifi_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
 
     // Buttons
     lv_obj_t * btn_row = create_white_container(wifi_pwd_modal);
@@ -1729,6 +2165,8 @@ void show_wifi_menu() {
     }, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t * list = lv_list_create(wifi_list_modal);
+    lv_obj_remove_flag(list, LV_OBJ_FLAG_SCROLL_ELASTIC); // Disable e-ink scroll animations
+    lv_obj_remove_flag(list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(80));
     lv_obj_set_style_bg_color(list, lv_color_white(), 0);
     lv_obj_set_style_border_width(list, 1, 0);
@@ -1754,6 +2192,9 @@ void show_wifi_menu() {
         lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
         lv_obj_set_style_text_color(btn, lv_color_black(), 0);
         lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_PRESSED); // no animation
+        lv_obj_set_style_transition(btn, &no_trans_dsc, 0);
+        lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_PRESSED);
+        lv_obj_set_style_anim_duration(btn, 0, 0);
         lv_obj_add_event_cb(btn, wifi_ssid_clicked_cb, LV_EVENT_CLICKED, NULL);
     }
 }

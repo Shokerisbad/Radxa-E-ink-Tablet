@@ -53,4 +53,5 @@ private:
     bool first_refresh;
 };
 
+extern bool g_dark_mode;
 extern RadxaEPD *g_epd_instance;

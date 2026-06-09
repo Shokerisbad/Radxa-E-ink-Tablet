@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <map>
 #include <zip.h> // libzip Header
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -197,57 +198,89 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
   return result;
 }
 
-void EpubHandler::paginateText(const std::string &text) {
-  // Rough estimate matching LVGL default font (montserrat 14)
+
+void EpubHandler::paginateText(const std::string &text, int chars_per_line, int line_height) {
   const int SCREEN_MAX_HEIGHT = 710; // Max height for reader_body is 770, leave 60px pad for bottom page counter
-  const int CHARS_PER_LINE = 65; 
-  const int LINE_HEIGHT = 16;
+  
+  m_pages.clear();
+  m_pageOffsets.clear();
 
   std::string current_page;
   int current_height = 0;
 
   std::istringstream stream(text);
   std::string line;
+  
+  size_t current_char_index = 0;
+  int current_page_idx = 0;
+  
+  for (auto& ch : m_toc) ch.page_number = -1;
 
   while (std::getline(stream, line, '\n')) {
+    // Check TOC
+    for (auto& ch : m_toc) {
+      if (ch.page_number == -1 && current_char_index >= ch.offset) {
+        ch.page_number = current_page_idx;
+      }
+    }
+
     size_t img_idx = line.find("[IMG:");
     if (img_idx != std::string::npos) {
       // If there's an image, force a page break before it if we have text
       if (!current_page.empty()) {
         m_pages.push_back(current_page);
+        current_page_idx++;
         current_page.clear();
         current_height = 0;
+        m_pageOffsets.push_back(current_char_index);
       }
       // Push the image on its own page
       m_pages.push_back(line + "\n");
+      current_page_idx++;
+      current_char_index += line.length() + 1;
+      if (current_char_index < text.length()) m_pageOffsets.push_back(current_char_index);
       continue;
     }
 
     // Estimate wrapped lines
     size_t line_len = line.length();
-    int wrapped_lines = (static_cast<int>(line_len) / CHARS_PER_LINE) + 1;
+    int wrapped_lines = (static_cast<int>(line_len) / chars_per_line) + 1;
     if (line_len == 0)
       wrapped_lines = 1; // Empty lines still take up height
 
-    int added_height = wrapped_lines * LINE_HEIGHT;
+    int added_height = wrapped_lines * line_height;
 
     if (current_height + added_height > SCREEN_MAX_HEIGHT &&
         !current_page.empty()) {
       m_pages.push_back(current_page);
+      current_page_idx++;
       current_page = line + "\n";
       current_height = added_height;
+      m_pageOffsets.push_back(current_char_index);
     } else {
       current_page += line + "\n";
       current_height += added_height;
     }
+    
+    current_char_index += line.length() + 1;
   }
 
   if (!current_page.empty()) {
     m_pages.push_back(current_page);
+    current_page_idx++;
   }
 
   if (m_pages.empty())
     m_pages.push_back("No content found in the epub.");
+    
+  // final check for TOC
+  for (auto& ch : m_toc) {
+    if (ch.page_number == -1) ch.page_number = current_page_idx > 0 ? current_page_idx - 1 : 0;
+  }
+}
+
+const std::vector<EpubChapter>& EpubHandler::getTableOfContents() const {
+  return m_toc;
 }
 
 bool EpubHandler::loadEpub(const std::string &filepath) {
@@ -259,6 +292,7 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
   m_filepath = filepath;
   m_title = std::filesystem::path(filepath).filename().string();
   m_pages.clear();
+  m_toc.clear();
   m_currentPage = 0;
 
   int err = 0;
@@ -269,22 +303,20 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
     return false;
   }
 
-  std::string full_text;
   zip_int64_t num_entries = zip_get_num_entries(z, 0);
 
   // Ensure cache directory exists for images
   std::string book_img_dir = "books/.cache/" + m_title + "_imgs/";
   std::filesystem::create_directories(book_img_dir);
 
+  // First pass: extract images
   for (zip_int64_t i = 0; i < num_entries; i++) {
     const char *name = zip_get_name(z, i, 0);
-    if (!name)
-      continue;
+    if (!name) continue;
 
     std::string sname(name);
     std::string sname_lower = sname;
-    for (auto &tc : sname_lower)
-      tc = tolower(tc);
+    for (auto &tc : sname_lower) tc = tolower(tc);
 
     // Extract images
     if (sname_lower.find(".jpg") != std::string::npos ||
@@ -301,8 +333,7 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
         out.write(img_content.data(), img_content.size());
         out.close();
 
-        // Try to decode as progressive JPEG/PNG and rewrite to simple 24-bit
-        // BMP because LVGL BMP decoder is highly robust
+        // Decode as progressive JPEG/PNG and rewrite to simple 24-bit BMP
         int width, height, channels;
         unsigned char *img_data =
             stbi_load(out_path.c_str(), &width, &height, &channels, 3);
@@ -313,17 +344,14 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
           int new_w = width;
           int new_h = height;
 
-          // Downscale proportionally if needed
           if (width > max_w || height > max_h) {
             float scale_w = (float)max_w / width;
             float scale_h = (float)max_h / height;
             float scale = std::min(scale_w, scale_h);
             new_w = (int)(width * scale);
             new_h = (int)(height * scale);
-            if (new_w < 1)
-              new_w = 1;
-            if (new_h < 1)
-              new_h = 1;
+            if (new_w < 1) new_w = 1;
+            if (new_h < 1) new_h = 1;
           }
 
           unsigned char *new_data = new unsigned char[new_w * new_h * 3];
@@ -331,10 +359,8 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
             for (int x = 0; x < new_w; x++) {
               int src_x = x * width / new_w;
               int src_y = y * height / new_h;
-              if (src_x >= width)
-                src_x = width - 1;
-              if (src_y >= height)
-                src_y = height - 1;
+              if (src_x >= width) src_x = width - 1;
+              if (src_y >= height) src_y = height - 1;
 
               int src_idx = (src_y * width + src_x) * 3;
               int dst_idx = (y * new_w + x) * 3;
@@ -350,52 +376,206 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
           write_bmp(bmp_path.c_str(), new_w, new_h, 3, new_data);
           delete[] new_data;
           stbi_image_free(img_data);
-
-          // Delete the original progressive JPG/PNG so we don't waste space
           std::filesystem::remove(out_path);
         }
       }
     }
-    // Extract text
-    else if (sname_lower.find(".html") != std::string::npos ||
-             sname_lower.find(".xhtml") != std::string::npos) {
-      std::string raw_html = readZipFile(z, sname);
-      full_text += stripHtmlTags(raw_html, m_title) + "\n\n";
+  }
+
+  // Second pass: Parse EPUB structure
+  std::string container = readZipFile(z, "META-INF/container.xml");
+  std::string opf_path;
+  size_t root_pos = container.find("full-path=\"");
+  if (root_pos != std::string::npos) {
+    root_pos += 11;
+    size_t end_pos = container.find("\"", root_pos);
+    if (end_pos != std::string::npos) {
+      opf_path = container.substr(root_pos, end_pos - root_pos);
     }
   }
+
+  if (opf_path.empty()) {
+    zip_close(z);
+    m_pages.push_back("Invalid EPUB: No OPF found.");
+    return false;
+  }
+
+  std::string opf_content = readZipFile(z, opf_path);
+  std::string opf_dir = std::filesystem::path(opf_path).parent_path().string();
+  if (!opf_dir.empty() && opf_dir.back() != '/') opf_dir += "/";
+  if (opf_dir == "\"") opf_dir = "";
+
+  // Parse manifest
+  std::map<std::string, std::string> manifest;
+  size_t manifest_start = opf_content.find("<manifest");
+  size_t manifest_end = opf_content.find("</manifest>");
+  if (manifest_start != std::string::npos && manifest_end != std::string::npos) {
+      size_t pos = manifest_start;
+      while ((pos = opf_content.find("<item ", pos)) != std::string::npos && pos < manifest_end) {
+          size_t id_pos = opf_content.find("id=\"");
+          // Ensure we are finding id and href within this tag
+          size_t tag_end = opf_content.find(">", pos);
+          id_pos = opf_content.find("id=\"", pos);
+          size_t href_pos = opf_content.find("href=\"", pos);
+          if (id_pos != std::string::npos && id_pos < tag_end && href_pos != std::string::npos && href_pos < tag_end) {
+              id_pos += 4;
+              size_t id_end = opf_content.find("\"", id_pos);
+              href_pos += 6;
+              size_t href_end = opf_content.find("\"", href_pos);
+              std::string id = opf_content.substr(id_pos, id_end - id_pos);
+              std::string href = opf_content.substr(href_pos, href_end - href_pos);
+              manifest[id] = href;
+          }
+          pos = tag_end;
+      }
+  }
+
+  // Parse spine
+  std::vector<std::string> spine;
+  std::string ncx_id;
+  size_t spine_start = opf_content.find("<spine");
+  if (spine_start != std::string::npos) {
+      size_t toc_attr = opf_content.find("toc=\"", spine_start);
+      size_t spine_tag_end = opf_content.find(">", spine_start);
+      if (toc_attr != std::string::npos && toc_attr < spine_tag_end) {
+          size_t toc_end = opf_content.find("\"", toc_attr + 5);
+          ncx_id = opf_content.substr(toc_attr + 5, toc_end - (toc_attr + 5));
+      }
+
+      size_t spine_end = opf_content.find("</spine>");
+      size_t pos = spine_start;
+      while ((pos = opf_content.find("<itemref ", pos)) != std::string::npos && pos < spine_end) {
+          size_t idref_pos = opf_content.find("idref=\"", pos);
+          if (idref_pos != std::string::npos) {
+              idref_pos += 7;
+              size_t idref_end = opf_content.find("\"", idref_pos);
+              spine.push_back(opf_content.substr(idref_pos, idref_end - idref_pos));
+          }
+          pos += 8;
+      }
+  }
+
+  // Parse NCX
+  std::string ncx_path;
+  if (!ncx_id.empty() && manifest.count(ncx_id)) {
+      ncx_path = opf_dir + manifest[ncx_id];
+  } else {
+      for (zip_int64_t i = 0; i < num_entries; i++) {
+          const char *name = zip_get_name(z, i, 0);
+          if (name && std::string(name).find(".ncx") != std::string::npos) {
+              ncx_path = name; break;
+          }
+      }
+  }
+
+  if (!ncx_path.empty()) {
+      std::string ncx_content = readZipFile(z, ncx_path);
+      size_t pos = 0;
+      while ((pos = ncx_content.find("<navPoint", pos)) != std::string::npos) {
+          size_t text_start = ncx_content.find("<text>", pos);
+          std::string title;
+          if (text_start != std::string::npos) {
+              text_start += 6;
+              size_t text_end = ncx_content.find("</text>", text_start);
+              title = ncx_content.substr(text_start, text_end - text_start);
+          }
+          size_t src_start = ncx_content.find("src=\"", pos);
+          std::string src;
+          if (src_start != std::string::npos) {
+              src_start += 5;
+              size_t src_end = ncx_content.find("\"", src_start);
+              src = ncx_content.substr(src_start, src_end - src_start);
+              size_t hash_pos = src.find("#");
+              if (hash_pos != std::string::npos) src = src.substr(0, hash_pos);
+          }
+          if (!title.empty() && !src.empty()) {
+              EpubChapter ch;
+              ch.title = title;
+              std::string ncx_dir = std::filesystem::path(ncx_path).parent_path().string();
+              if (!ncx_dir.empty() && ncx_dir.back() != '/') ncx_dir += "/";
+              if (ncx_dir == "\"") ncx_dir = "";
+              ch.src_file = ncx_dir + src;
+              ch.offset = 0;
+              ch.page_number = -1;
+              m_toc.push_back(ch);
+          }
+          pos += 9;
+      }
+  }
+
+  auto clean_string = [&](const std::string& input) {
+      std::string clean_text;
+      bool last_space = false;
+      bool last_newline = false;
+      for (char c : input) {
+        if (c == '\n' || c == '\r') {
+          if (!last_newline) { clean_text += '\n'; last_newline = true; last_space = true; }
+        } else if (std::isspace((unsigned char)c)) {
+          if (!last_space) { clean_text += ' '; last_space = true; last_newline = false; }
+        } else {
+          clean_text += c; last_space = false; last_newline = false;
+        }
+      }
+      return replaceUtf8Characters(clean_text);
+  };
+
+  std::string full_text;
+  std::map<std::string, size_t> file_offsets;
+
+  for (const auto& id : spine) {
+      if (manifest.count(id) == 0) continue;
+      std::string href = manifest[id];
+      std::string full_href = opf_dir + href;
+      
+      std::string raw_html = readZipFile(z, full_href);
+      if (raw_html.empty()) continue; // skip missing files
+
+      file_offsets[full_href] = full_text.length();
+      
+      std::string stripped = stripHtmlTags(raw_html, m_title);
+      std::string cleaned = clean_string(stripped) + "\n\n";
+      full_text += cleaned;
+  }
+  
   zip_close(z);
 
-  // Collapse whitespaces slightly for better reading but preserve newlines
-  std::string clean_text;
-  bool last_space = false;
-  bool last_newline = false;
-
-  for (char c : full_text) {
-    if (c == '\n' || c == '\r') {
-      if (!last_newline) {
-        clean_text += '\n';
-        last_newline = true;
-        last_space = true; // a newline acts as a space
+  // Map TOC offsets
+  for (auto& ch : m_toc) {
+      if (file_offsets.count(ch.src_file)) {
+          ch.offset = file_offsets[ch.src_file];
+      } else {
+          ch.offset = 0; // fallback if not found
       }
-    } else if (std::isspace((unsigned char)c)) {
-      if (!last_space) {
-        clean_text += ' ';
-        last_space = true;
-        last_newline = false;
-      }
-    } else {
-      clean_text += c;
-      last_space = false;
-      last_newline = false;
-    }
   }
 
-  // Replace UTF-8 characters that LVGL's default font doesn't support
-  clean_text = replaceUtf8Characters(clean_text);
-
-  paginateText(clean_text);
+  m_fullText = full_text;
+  
+  // Default to 14 pt font values if loaded directly
+  paginateText(m_fullText, 65, 16);
   m_isLoaded = true;
   return true;
+}
+
+void EpubHandler::repaginate(int chars_per_line, int line_height) {
+    if (!m_isLoaded || m_pages.empty() || m_pageOffsets.empty()) return;
+    
+    // Find the absolute character offset of the currently viewed page
+    size_t current_offset = 0;
+    if (m_currentPage < m_pageOffsets.size()) {
+        current_offset = m_pageOffsets[m_currentPage];
+    }
+    
+    // Re-run pagination with new parameters
+    paginateText(m_fullText, chars_per_line, line_height);
+    
+    // Find which new page contains our old offset
+    m_currentPage = 0;
+    for (size_t i = 0; i < m_pageOffsets.size(); i++) {
+        if (m_pageOffsets[i] > current_offset) {
+            break;
+        }
+        m_currentPage = i;
+    }
 }
 
 std::string EpubHandler::getTitle() const {

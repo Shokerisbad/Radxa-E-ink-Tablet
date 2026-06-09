@@ -29,6 +29,7 @@
 #define PIN_BUSY_NAME "PIN_18"
 
 RadxaEPD *g_epd_instance = nullptr;
+bool g_dark_mode = false;
 
 RadxaEPD::RadxaEPD()
     : spi_fd(-1), line_cs(nullptr), line_dc(nullptr),
@@ -374,6 +375,9 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     memcpy(phys_buffer.data(), px_map, frame_bytes);
 #endif
 
+    if (g_dark_mode) {
+      for (auto& b : phys_buffer) b = ~b;
+    }
     std::cout << "Refreshing display (FULL, rotated)..." << std::endl;
     g_last_frame = phys_buffer;
     g_epd_instance->refresh_full(phys_buffer.data());

@@ -5,11 +5,16 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+
+#ifndef _WIN32
 #include <gpiod.h>
+#include <dirent.h>
+#endif
+
 #include "lvgl/lvgl.h"
 #include <iostream>
-#include <dirent.h>
 
+#ifndef _WIN32
 static inline int get_sysfs_gpio_number(const std::string& pin_name) {
     struct gpiod_line *line = gpiod_line_find(pin_name.c_str());
     if (!line) {
@@ -70,6 +75,7 @@ static inline int get_sysfs_gpio_number(const std::string& pin_name) {
     std::cerr << "Failed to find sysfs base for label: " << target_label << std::endl;
     return -1;
 }
+#endif
 
 // GPIO Configuration (Physical Pin Numbers)
 #define TOUCH_PIN_RST "PIN_37"

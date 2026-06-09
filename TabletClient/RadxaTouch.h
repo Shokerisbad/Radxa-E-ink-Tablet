@@ -7,17 +7,25 @@
 #include <string>
 #include <gpiod.h>
 #include "lvgl/lvgl.h"
+#include <iostream>
 
 static inline int get_sysfs_gpio_number(const std::string& pin_name) {
     struct gpiod_line *line = gpiod_line_find(pin_name.c_str());
-    if (!line) return -1;
+    if (!line) {
+        std::cerr << "gpiod_line_find failed for: " << pin_name << std::endl;
+        return -1;
+    }
     
     unsigned int offset = gpiod_line_offset(line);
     struct gpiod_chip *chip = gpiod_line_get_chip(line);
-    if (!chip) return -1;
+    if (!chip) {
+        std::cerr << "gpiod_line_get_chip failed for: " << pin_name << std::endl;
+        return -1;
+    }
     
     const char* chip_name = gpiod_chip_name(chip);
     if (!chip_name) {
+        std::cerr << "gpiod_chip_name failed for: " << pin_name << std::endl;
         gpiod_chip_close(chip);
         return -1;
     }
@@ -27,6 +35,8 @@ static inline int get_sysfs_gpio_number(const std::string& pin_name) {
     int base = -1;
     if (base_file.is_open()) {
         base_file >> base;
+    } else {
+        std::cerr << "Failed to open sysfs base file: " << base_path << std::endl;
     }
     
     // Crucial: close the chip to release the libgpiod lock on sysfs!

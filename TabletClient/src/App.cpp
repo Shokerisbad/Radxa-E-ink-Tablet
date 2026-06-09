@@ -908,13 +908,12 @@ static void global_gesture_cb(lv_event_t *e) {
 }
 
 static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
+    // SLEEP TEMPORARILY DISABLED
+    /*
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
-    // Deep sleep after 10 seconds of inactivity (10000 ms).
-    // CHANGE THIS to 300000 (5 minutes) for actual reading!
     if (inactive_time > 10000) {
         std::cout << "Inactivity timeout reached! Suspending system..." << std::endl;
         
-        // Configure Touch INT (Pin 35 / GPIOAO_8) as a wakeup source
         int gpio_num = get_sysfs_gpio_number(TOUCH_PIN_INT);
         if (gpio_num != -1) {
             std::string sysfs_base = "/sys/class/gpio/gpio" + std::to_string(gpio_num);
@@ -926,33 +925,22 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
             
             std::string edge_cmd = "echo falling > " + sysfs_base + "/edge";
             system(edge_cmd.c_str());
-            
-            // Amlogic kernels often protect the /power/wakeup file unless the pin is defined as a wakeup-source in the Device Tree.
-            // We'll skip setting power/wakeup and instead use 'freeze' (s2idle) sleep state, which wakes on any standard interrupt.
-        } else {
-            std::cerr << "Failed to find sysfs number for " << TOUCH_PIN_INT << std::endl;
         }
         
-        // Reset the LVGL inactivity timer so it doesn't immediately sleep again upon waking
         lv_disp_trig_activity(NULL); 
         
-        // Put the E-ink display controller into deep sleep to protect against SPI pin floating
         if (g_epd_instance) {
             g_epd_instance->sleep();
         }
 
-        // Put the Radxa Zero into s2idle (freeze) sleep instead of deep sleep (mem).
-        // Freeze allows standard GPIO edge interrupts to wake the CPU.
         system("echo freeze > /sys/power/state");
 
-        // The CPU wakes up here after the touch interrupt!
-        // Re-initialize the E-ink display controller
         if (g_epd_instance) {
             g_epd_instance->wake();
-            // Force a full refresh to clear any artifacts and redraw the UI
             lv_obj_invalidate(lv_scr_act());
         }
     }
+    */
 }
 
 void build_tablet_ui() {

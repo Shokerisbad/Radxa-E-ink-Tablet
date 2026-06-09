@@ -8,6 +8,7 @@
 #include <gpiod.h>
 #include "lvgl/lvgl.h"
 #include <iostream>
+#include <dirent.h>
 
 static inline int get_sysfs_gpio_number(const std::string& pin_name) {
     struct gpiod_line *line = gpiod_line_find(pin_name.c_str());
@@ -23,28 +24,50 @@ static inline int get_sysfs_gpio_number(const std::string& pin_name) {
         return -1;
     }
     
-    const char* chip_name = gpiod_chip_name(chip);
-    if (!chip_name) {
-        std::cerr << "gpiod_chip_name failed for: " << pin_name << std::endl;
+    const char* target_label_cstr = gpiod_chip_label(chip);
+    if (!target_label_cstr) {
+        std::cerr << "gpiod_chip_label failed for: " << pin_name << std::endl;
         gpiod_chip_close(chip);
         return -1;
     }
-    
-    std::string base_path = std::string("/sys/class/gpio/") + chip_name + "/base";
-    std::ifstream base_file(base_path);
-    int base = -1;
-    if (base_file.is_open()) {
-        base_file >> base;
-    } else {
-        std::cerr << "Failed to open sysfs base file: " << base_path << std::endl;
-    }
+    std::string target_label = target_label_cstr;
     
     // Crucial: close the chip to release the libgpiod lock on sysfs!
     gpiod_chip_close(chip);
     
+    // Now find the matching gpiochip in sysfs by label
+    int base = -1;
+    DIR *dir = opendir("/sys/class/gpio");
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            std::string name = entry->d_name;
+            if (name.find("gpiochip") == 0) {
+                std::string label_path = "/sys/class/gpio/" + name + "/label";
+                std::ifstream label_file(label_path);
+                if (label_file.is_open()) {
+                    std::string label;
+                    std::getline(label_file, label);
+                    // Sysfs label might have a trailing newline, so we check using find
+                    if (label.find(target_label) != std::string::npos || target_label.find(label) != std::string::npos) {
+                        std::string base_path = "/sys/class/gpio/" + name + "/base";
+                        std::ifstream base_file(base_path);
+                        if (base_file.is_open()) {
+                            base_file >> base;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        closedir(dir);
+    }
+    
     if (base != -1) {
         return base + offset;
     }
+    
+    std::cerr << "Failed to find sysfs base for label: " << target_label << std::endl;
     return -1;
 }
 

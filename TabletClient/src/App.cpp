@@ -1198,7 +1198,7 @@ static void fetch_dict_bg(std::string word) {
     std::thread([word]() {
         DictPayload *p = new DictPayload{word, "", false};
         
-        std::string cmd = "curl -s \"https://api.dictionaryapi.dev/api/v2/entries/en/\" + word + \"\"";
+        std::string cmd = "curl -s \"https://api.dictionaryapi.dev/api/v2/entries/en/" + word + "\"";
         FILE* fp = popen(cmd.c_str(), "r");
         if (fp) {
             char buffer[512];
@@ -1539,7 +1539,7 @@ void build_tablet_ui() {
   lv_label_set_text(reader_content_label, "Select a book from the library to begin reading.");
   apply_typography();
   lv_obj_add_flag(reader_content_label, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(reader_content_label, reader_label_clicked_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(reader_content_label, reader_label_clicked_cb, LV_EVENT_LONG_PRESSED, NULL);
 
   // Top Toolbar container (Transparent tap zone)
   lv_obj_t* reader_top_tapzone = create_white_container(screen_book_reader);

@@ -217,7 +217,24 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
   for (auto& ch : m_toc) ch.page_number = -1;
 
   while (std::getline(stream, line, '\n')) {
-    // Check TOC
+    // Check TOC and force page break for new chapter
+    bool chapter_start = false;
+    for (auto& ch : m_toc) {
+      if (ch.page_number == -1 && current_char_index >= ch.offset) {
+        chapter_start = true;
+        break; // Wait to assign page_number until we potentially page break
+      }
+    }
+
+    if (chapter_start && !current_page.empty()) {
+        m_pages.push_back(current_page);
+        current_page_idx++;
+        current_page.clear();
+        current_height = 0;
+        m_pageOffsets.push_back(current_char_index);
+    }
+    
+    // Now assign the correct page number
     for (auto& ch : m_toc) {
       if (ch.page_number == -1 && current_char_index >= ch.offset) {
         ch.page_number = current_page_idx;

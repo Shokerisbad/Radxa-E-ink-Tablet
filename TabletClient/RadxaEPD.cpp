@@ -453,6 +453,10 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     }
 #endif
 
+    if (g_dark_mode) {
+      for (auto& b : part_buffer) b = ~b;
+    }
+
     bool local_changed = false;
     int part_stride = part_w / 8;
     int phys_stride = 800 / 8;

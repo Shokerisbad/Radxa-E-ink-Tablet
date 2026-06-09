@@ -12,6 +12,7 @@
 
 #include "App.h"
 #include "lvgl/lvgl.h"
+#include "../RadxaEPD.h"
 
 #include "epubHandler.h"
 #include "pdfHandler.h"
@@ -27,6 +28,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <cstdlib>
 
 // Include stb_image for cover image decoding (IMPLEMENTATION is in epubHandler.cpp)
 #include "../LvglPlatform/lvgl/src/libs/gltf/stb_image/stb_image.h"
@@ -185,6 +187,8 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, LV_STATE_PRESSED);
     lv_obj_set_style_anim_duration(btn, 0, 0); // Disable state transition animations
+    lv_obj_set_style_transition(btn, NULL, 0);
+    lv_obj_set_style_transition(btn, NULL, LV_STATE_PRESSED);
     lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
     return btn;
 }
@@ -242,6 +246,8 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
   lv_obj_set_style_translate_y(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_anim_duration(row, 0, 0);
+  lv_obj_set_style_transition(row, NULL, 0);
+  lv_obj_set_style_transition(row, NULL, LV_STATE_PRESSED);
   lv_obj_remove_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
 
   return row;
@@ -286,16 +292,25 @@ lv_obj_t *screen_book_reader;
 lv_obj_t *screen_ai;
 
 static lv_obj_t* continue_subtitle_label = nullptr;
+static lv_obj_t* btn_continue_reading = nullptr;
+static void book_clicked_cb(lv_event_t *e); // Forward declaration
 
 static void update_continue_reading_button() {
-    if (!continue_subtitle_label) return;
+    if (!continue_subtitle_label || !btn_continue_reading) return;
     std::string continue_subtitle = "No book";
+    
+    // Remove all click events first to prevent duplicate callbacks
+    lv_obj_remove_event_cb(btn_continue_reading, NULL);
+    
     if (!g_reading_state.last_book_path.empty()) {
         if (g_book_metadata.count(g_reading_state.last_book_path)) {
             continue_subtitle = g_book_metadata[g_reading_state.last_book_path].title;
         } else {
             continue_subtitle = std::filesystem::path(g_reading_state.last_book_path).filename().string();
         }
+        lv_obj_add_event_cb(btn_continue_reading, book_clicked_cb, LV_EVENT_CLICKED, NULL);
+    } else {
+        lv_obj_add_event_cb(btn_continue_reading, load_screen_cb, LV_EVENT_CLICKED, screen_library);
     }
     lv_label_set_text(continue_subtitle_label, continue_subtitle.c_str());
 }
@@ -555,7 +570,15 @@ static void hide_bottombar_cb(lv_event_t *e) {
 static void jump_btn_cb(lv_event_t *e); // Forward declaration
 
 static void book_clicked_cb(lv_event_t *e) {
-  const char *filepath = (const char *)lv_event_get_user_data(e);
+  const char *filepath_ptr = (const char *)lv_event_get_user_data(e);
+  std::string filepath_str;
+  if (filepath_ptr == nullptr) {
+      if (g_reading_state.last_book_path.empty()) return;
+      filepath_str = g_reading_state.last_book_path;
+  } else {
+      filepath_str = std::string(filepath_ptr);
+  }
+  const char *filepath = filepath_str.c_str();
   std::string ext = std::filesystem::path(filepath).extension().string();
 
   // Convert to lowercase
@@ -729,6 +752,9 @@ static void build_library_list(SortMode mode) {
       });
   }
 
+  // Pre-allocate to prevent vector reallocation from invalidating c_str() pointers!
+  book_filepaths.reserve(temp_files.size());
+
   for (const auto &path_str : temp_files) {
       book_filepaths.push_back(path_str);
       
@@ -881,6 +907,40 @@ static void global_gesture_cb(lv_event_t *e) {
   }
 }
 
+static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
+    uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
+    // Deep sleep after 10 seconds of inactivity (10000 ms).
+    // CHANGE THIS to 300000 (5 minutes) for actual reading!
+    if (inactive_time > 10000) {
+        std::cout << "Inactivity timeout reached! Suspending system..." << std::endl;
+        
+        // Configure Touch INT (Pin 35 / GPIOAO_8 / 420) as a wakeup source
+        system("echo 420 > /sys/class/gpio/export 2>/dev/null");
+        system("echo in > /sys/class/gpio/gpio420/direction 2>/dev/null");
+        system("echo falling > /sys/class/gpio/gpio420/edge 2>/dev/null");
+        system("echo enabled > /sys/class/gpio/gpio420/power/wakeup 2>/dev/null");
+        
+        // Reset the LVGL inactivity timer so it doesn't immediately sleep again upon waking
+        lv_disp_trig_activity(NULL); 
+        
+        // Put the E-ink display controller into deep sleep to protect against SPI pin floating
+        if (g_epd_instance) {
+            g_epd_instance->sleep();
+        }
+
+        // Put the Radxa Zero into deep sleep
+        system("systemctl suspend");
+
+        // The CPU wakes up here after the touch interrupt!
+        // Re-initialize the E-ink display controller
+        if (g_epd_instance) {
+            g_epd_instance->wake();
+            // Force a full refresh to clear any artifacts and redraw the UI
+            lv_obj_invalidate(lv_scr_act());
+        }
+    }
+}
+
 void build_tablet_ui() {
   load_reading_state();
   checkAndClearCache();
@@ -978,17 +1038,17 @@ void build_tablet_ui() {
           continue_subtitle = std::filesystem::path(g_reading_state.last_book_path).filename().string();
       }
   }
-  lv_obj_t* row_continue = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", continue_subtitle.c_str());
-  continue_subtitle_label = lv_obj_get_child(row_continue, 2);
+  btn_continue_reading = create_menu_row(list_cont, LV_SYMBOL_PLAY, "Continue Reading", continue_subtitle.c_str());
+  continue_subtitle_label = lv_obj_get_child(btn_continue_reading, 2);
   if (continue_subtitle_label) {
       lv_label_set_long_mode(continue_subtitle_label, LV_LABEL_LONG_CLIP);
       lv_obj_set_width(continue_subtitle_label, 150); // Limit width to prevent overlap
   }
   
   if (g_reading_state.last_book_path.empty()) {
-      lv_obj_add_event_cb(row_continue, load_screen_cb, LV_EVENT_CLICKED, screen_library);
+      lv_obj_add_event_cb(btn_continue_reading, load_screen_cb, LV_EVENT_CLICKED, screen_library);
   } else {
-      lv_obj_add_event_cb(row_continue, book_clicked_cb, LV_EVENT_CLICKED, (void *)g_reading_state.last_book_path.c_str());
+      lv_obj_add_event_cb(btn_continue_reading, book_clicked_cb, LV_EVENT_CLICKED, NULL);
   }
 
   // Row 2: Books by Title
@@ -1144,6 +1204,9 @@ void build_tablet_ui() {
   lv_obj_t * history_cb = lv_checkbox_create(screen_ai);
   lv_checkbox_set_text(history_cb, "Use Reading History");
   lv_obj_align(history_cb, LV_ALIGN_TOP_LEFT, 20, 80); // Placed cleanly above input bar
+  lv_obj_set_style_transition(history_cb, NULL, 0);
+  lv_obj_set_style_transition(history_cb, NULL, LV_PART_INDICATOR);
+  lv_obj_set_style_transition(history_cb, NULL, LV_PART_INDICATOR | LV_STATE_CHECKED);
   lv_obj_add_state(history_cb, LV_STATE_CHECKED); // Default to checked
 
   lv_obj_t * clear_history_btn = create_styled_btn(screen_ai);
@@ -1263,6 +1326,8 @@ void build_tablet_ui() {
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);
   lv_keyboard_set_popovers(ai_kb, false);
   lv_obj_set_style_anim_duration(ai_kb, 0, LV_PART_ITEMS);
+  lv_obj_set_style_transition(ai_kb, NULL, LV_PART_ITEMS);
+  lv_obj_set_style_transition(ai_kb, NULL, LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_bg_color(ai_kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_text_color(ai_kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_transform_width(ai_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -1313,6 +1378,9 @@ void build_tablet_ui() {
         }
       },
       LV_EVENT_ALL, kb_ctx);
+
+  // Start the inactivity sleep timer (checks every 1 second)
+  lv_timer_create(inactivity_sleep_timer_cb, 1000, NULL);
 
   // Load the home screen by default
   lv_scr_load(screen_main);
@@ -1526,3 +1594,151 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
 }
 
 // --- END E-INK APP UI PLUMBING ---
+
+// --- WIFI CONNECTION MANAGER ---
+
+static lv_obj_t* wifi_pwd_modal = nullptr;
+static lv_obj_t* wifi_kb = nullptr;
+static lv_obj_t* wifi_pwd_ta = nullptr;
+static std::string target_ssid = "";
+
+static void wifi_connect_cb(lv_event_t * e) {
+    if(!wifi_pwd_ta) return;
+    const char * pwd = lv_textarea_get_text(wifi_pwd_ta);
+    std::string cmd;
+#ifndef _WIN32
+    cmd = "nmcli dev wifi connect \"" + target_ssid + "\" password \"" + std::string(pwd) + "\"";
+    system(cmd.c_str());
+#else
+    std::cout << "MOCK CONNECT to: " << target_ssid << " with pwd: " << pwd << std::endl;
+#endif
+
+    if(wifi_pwd_modal) {
+        lv_obj_del(wifi_pwd_modal);
+        wifi_pwd_modal = nullptr;
+        wifi_kb = nullptr;
+        wifi_pwd_ta = nullptr;
+    }
+}
+
+static void wifi_ssid_clicked_cb(lv_event_t * e) {
+    lv_obj_t * btn = (lv_obj_t *)lv_event_get_target(e);
+    // Find the text label inside the list button. List buttons usually have an icon label and a text label.
+    // The second child is typically the text label.
+    uint32_t child_cnt = lv_obj_get_child_cnt(btn);
+    for (uint32_t i = 0; i < child_cnt; i++) {
+        lv_obj_t * child = lv_obj_get_child(btn, i);
+        if (lv_obj_check_type(child, &lv_label_class)) {
+            std::string txt = lv_label_get_text(child);
+            if (txt != LV_SYMBOL_WIFI) {
+                target_ssid = txt;
+            }
+        }
+    }
+
+    if(target_ssid.empty()) return;
+
+    // Create password modal
+    wifi_pwd_modal = create_white_container(lv_layer_top());
+    lv_obj_set_size(wifi_pwd_modal, 400, 380);
+    lv_obj_center(wifi_pwd_modal);
+    lv_obj_set_style_border_color(wifi_pwd_modal, lv_color_black(), 0);
+    lv_obj_set_style_border_width(wifi_pwd_modal, 2, 0);
+    lv_obj_set_flex_flow(wifi_pwd_modal, LV_FLEX_FLOW_COLUMN);
+
+    lv_obj_t * title = lv_label_create(wifi_pwd_modal);
+    lv_label_set_text_fmt(title, "Connect to:\n%s", target_ssid.c_str());
+
+    wifi_pwd_ta = lv_textarea_create(wifi_pwd_modal);
+    lv_textarea_set_password_mode(wifi_pwd_ta, true);
+    lv_textarea_set_placeholder_text(wifi_pwd_ta, "Password");
+    lv_obj_set_width(wifi_pwd_ta, LV_PCT(90));
+    lv_obj_set_style_border_width(wifi_pwd_ta, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(wifi_pwd_ta, lv_color_black(), LV_PART_MAIN);
+
+    // Keyboard
+    wifi_kb = lv_keyboard_create(wifi_pwd_modal);
+    lv_keyboard_set_textarea(wifi_kb, wifi_pwd_ta);
+
+    // Buttons
+    lv_obj_t * btn_row = create_white_container(wifi_pwd_modal);
+    lv_obj_set_size(btn_row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t * connect_btn = create_styled_btn(btn_row);
+    lv_obj_t * connect_lbl = lv_label_create(connect_btn);
+    lv_label_set_text(connect_lbl, "Connect");
+    lv_obj_add_event_cb(connect_btn, wifi_connect_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t * cancel_btn = create_styled_btn(btn_row);
+    lv_obj_t * cancel_lbl = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_add_event_cb(cancel_btn, [](lv_event_t *e){
+        if(wifi_pwd_modal) {
+            lv_obj_del(wifi_pwd_modal);
+            wifi_pwd_modal = nullptr;
+            wifi_kb = nullptr;
+            wifi_pwd_ta = nullptr;
+        }
+    }, LV_EVENT_CLICKED, NULL);
+}
+
+static lv_obj_t* wifi_list_modal = nullptr;
+
+void show_wifi_menu() {
+    if(wifi_list_modal) return; // already open
+    wifi_list_modal = create_white_container(lv_layer_top());
+    lv_obj_set_size(wifi_list_modal, 420, 600);
+    lv_obj_center(wifi_list_modal);
+    lv_obj_set_style_border_color(wifi_list_modal, lv_color_black(), 0);
+    lv_obj_set_style_border_width(wifi_list_modal, 2, 0);
+    lv_obj_set_flex_flow(wifi_list_modal, LV_FLEX_FLOW_COLUMN);
+
+    lv_obj_t * title_row = create_white_container(wifi_list_modal);
+    lv_obj_set_size(title_row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t * title = lv_label_create(title_row);
+    lv_label_set_text(title, "Available Wi-Fi Networks");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+
+    lv_obj_t * close_btn = create_styled_btn(title_row);
+    lv_obj_t * close_lbl = lv_label_create(close_btn);
+    lv_label_set_text(close_lbl, "Close");
+    lv_obj_add_event_cb(close_btn, [](lv_event_t *e){
+        if(wifi_list_modal) {
+            lv_obj_del(wifi_list_modal);
+            wifi_list_modal = nullptr;
+        }
+    }, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t * list = lv_list_create(wifi_list_modal);
+    lv_obj_set_size(list, LV_PCT(100), LV_PCT(80));
+    lv_obj_set_style_bg_color(list, lv_color_white(), 0);
+    lv_obj_set_style_border_width(list, 1, 0);
+
+    std::vector<std::string> ssids;
+#ifndef _WIN32
+    FILE* fp = popen("nmcli -t -f SSID dev wifi | sort | uniq", "r");
+    if(fp) {
+        char buffer[256];
+        while(fgets(buffer, sizeof(buffer), fp) != nullptr) {
+            std::string line(buffer);
+            if(!line.empty() && line.back() == '\n') line.pop_back();
+            if(!line.empty()) ssids.push_back(line);
+        }
+        pclose(fp);
+    }
+#else
+    ssids = {"Simulated_Network_1", "Simulated_Network_2", "Guest_WiFi"};
+#endif
+
+    for(const auto& ssid : ssids) {
+        lv_obj_t * btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, ssid.c_str());
+        lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
+        lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+        lv_obj_add_event_cb(btn, wifi_ssid_clicked_cb, LV_EVENT_CLICKED, NULL);
+    }
+}

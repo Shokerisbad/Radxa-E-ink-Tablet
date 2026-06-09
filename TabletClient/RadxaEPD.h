@@ -51,3 +51,5 @@ private:
 
     bool first_refresh;
 };
+
+extern RadxaEPD *g_epd_instance;

@@ -245,12 +245,12 @@ void RadxaEPD::refresh_partial(int x_start, int y_start, const uint8_t *buffer, 
   send_data(x_start / 256);
   send_data(x_start % 256);
   send_data(x_end / 256);
-  send_data((x_end % 256) - 1);
+  send_data(x_end % 256);
   
   send_data(y_start / 256);
   send_data(y_start % 256);
   send_data(y_end / 256);
-  send_data((y_end % 256) - 1);
+  send_data(y_end % 256);
   send_data(0x01); // Scan parameter (0x01 = scan only partial area)
 
   send_command(0x13); // Write data to New SRAM

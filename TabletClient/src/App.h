@@ -5,6 +5,7 @@
 
 // Forward declare to allow the OS wrappers to initialize the UI
 void build_tablet_ui();
+void show_wifi_menu();
 
 // Reading tracker
 struct FinishedBook {

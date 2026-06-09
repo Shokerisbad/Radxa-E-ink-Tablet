@@ -11,6 +11,7 @@
 #include "RadxaTouch.h"
 #include "src/App.h"
 #include <mutex>
+#include <fstream>
 
 extern std::recursive_mutex lvgl_mutex;
 
@@ -63,6 +64,10 @@ void create_status_bar() {
     lv_obj_t * wifi_label = lv_label_create(status_bar);
     lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
     lv_obj_align(wifi_label, LV_ALIGN_LEFT_MID, 10, 0);
+    lv_obj_add_flag(wifi_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(wifi_label, [](lv_event_t *e) {
+        show_wifi_menu();
+    }, LV_EVENT_CLICKED, NULL);
 
     // VPN Icon
     lv_obj_t * vpn_label = lv_label_create(status_bar);
@@ -123,6 +128,45 @@ int main(void) {
     signal(SIGTERM, signal_handler);
 
     std::cout << "Starting Radxa LVGL Tablet Client...\n";
+
+#ifndef _WIN32
+    // Auto-install systemd service
+    const char * svc_path = "/etc/systemd/system/tablet.service";
+    if (access(svc_path, F_OK) != 0) {
+        std::cout << "tablet.service not found. Installing...\n";
+        char exe_path[1024];
+        ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+        if (len != -1) {
+            exe_path[len] = '\0';
+            std::string exe_str(exe_path);
+            std::string dir_str = exe_str.substr(0, exe_str.find_last_of('/'));
+            
+            std::ofstream svc(svc_path);
+            if (svc.is_open()) {
+                svc << "[Unit]\n"
+                    << "Description=E-ink Tablet App\n"
+                    << "After=network.target\n\n"
+                    << "[Service]\n"
+                    << "Type=simple\n"
+                    << "User=root\n"
+                    << "WorkingDirectory=" << dir_str << "\n"
+                    << "ExecStart=" << exe_str << "\n"
+                    << "Restart=on-failure\n"
+                    << "RestartSec=3\n"
+                    << "StandardOutput=journal\n"
+                    << "StandardError=journal\n\n"
+                    << "[Install]\n"
+                    << "WantedBy=multi-user.target\n";
+                svc.close();
+                system("systemctl daemon-reload");
+                system("systemctl enable tablet.service");
+                std::cout << "tablet.service installed and enabled.\n";
+            } else {
+                std::cerr << "Failed to write tablet.service. Are you running as root?\n";
+            }
+        }
+    }
+#endif
  
     // Spawn Web Dashboard server process
     g_server_pid = fork();

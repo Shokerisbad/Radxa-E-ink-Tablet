@@ -294,6 +294,7 @@ lv_obj_t *screen_ai;
 static lv_obj_t* continue_subtitle_label = nullptr;
 static lv_obj_t* btn_continue_reading = nullptr;
 static void book_clicked_cb(lv_event_t *e); // Forward declaration
+static void load_screen_cb(lv_event_t *e);  // Forward declaration
 
 static void update_continue_reading_button() {
     if (!continue_subtitle_label || !btn_continue_reading) return;

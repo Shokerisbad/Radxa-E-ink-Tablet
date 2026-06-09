@@ -153,7 +153,13 @@ bool RadxaEPD::init() {
             << std::endl;
 
   hardware_reset();
+  init_display_sequence();
 
+  std::cout << "GDEY075T7 Initialization complete!" << std::endl;
+  return true;
+}
+
+void RadxaEPD::init_display_sequence() {
   // Panel Setting
   send_command(0x00);
   send_data(0x1F);
@@ -185,13 +191,23 @@ bool RadxaEPD::init() {
 
   // Resolution Setting
   send_command(0x61);
-  send_data(0x03);
-  send_data(0x20);
-  send_data(0x01);
-  send_data(0xE0);
+  send_data(0x03); // 800 (MSB)
+  send_data(0x20); // 800 (LSB)
+  send_data(0x01); // 480 (MSB)
+  send_data(0xE0); // 480 (LSB)
 
-  std::cout << "GDEY075T7 Initialization complete!" << std::endl;
-  return true;
+  // Dual SPI
+  send_command(0x15);
+  send_data(0x00);
+
+  // VCOM and Data Interval Setting
+  send_command(0x50);
+  send_data(0x10);
+  send_data(0x07);
+
+  // TCON Setting
+  send_command(0x60);
+  send_data(0x22);
 }
 
 void RadxaEPD::sleep() {
@@ -209,7 +225,10 @@ void RadxaEPD::sleep() {
 
 void RadxaEPD::wake() {
   hardware_reset();
-  init(); // Re-run initialization
+  // We DO NOT call init() because that would re-request the GPIO lines from libgpiod 
+  // and re-open the SPI descriptor, leaking descriptors and failing line requests!
+  // Instead, we just re-run the hardware display initialization sequence over SPI.
+  init_display_sequence();
 }
 
 void RadxaEPD::refresh_full(const uint8_t *buffer) {

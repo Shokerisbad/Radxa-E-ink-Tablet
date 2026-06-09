@@ -41,6 +41,7 @@ private:
     bool init_gpio();
     bool init_spi();
     void hardware_reset();
+    void init_display_sequence();
 
     void send_command(uint8_t cmd);
     void send_data(uint8_t data);

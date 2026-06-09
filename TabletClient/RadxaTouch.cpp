@@ -161,6 +161,13 @@ bool RadxaTouch::init() {
     }
 
     std::cout << "GT911 Touch initialized successfully!" << std::endl;
+    
+    // Release INT pin from libgpiod so sysfs can claim it for system suspend wakeup!
+    if (line_int) {
+        gpiod_line_release(line_int);
+        line_int = nullptr;
+    }
+
     return true;
 }
 

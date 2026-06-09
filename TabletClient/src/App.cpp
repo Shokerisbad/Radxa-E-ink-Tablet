@@ -441,12 +441,13 @@ static void update_reader_ui() {
   if (img_start != std::string::npos) {
     size_t img_end = text.find("]", img_start);
     if (img_end != std::string::npos) {
-      std::string img_path =
+      static std::string current_img_path;
+      current_img_path =
           text.substr(img_start + 5, img_end - (img_start + 5));
       text.erase(img_start, img_end - img_start + 1);
 
       if (reader_img) {
-        lv_image_set_src(reader_img, img_path.c_str());
+        lv_image_set_src(reader_img, current_img_path.c_str());
         lv_obj_clear_flag(reader_img, LV_OBJ_FLAG_HIDDEN);
       }
     }

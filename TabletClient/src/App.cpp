@@ -918,17 +918,17 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
         int gpio_num = get_sysfs_gpio_number(TOUCH_PIN_INT);
         if (gpio_num != -1) {
             std::string sysfs_base = "/sys/class/gpio/gpio" + std::to_string(gpio_num);
-            std::string export_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/export 2>/dev/null";
+            std::string export_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/export";
             system(export_cmd.c_str());
             
-            std::string dir_cmd = "echo in > " + sysfs_base + "/direction 2>/dev/null";
+            std::string dir_cmd = "echo in > " + sysfs_base + "/direction";
             system(dir_cmd.c_str());
             
-            std::string edge_cmd = "echo falling > " + sysfs_base + "/edge 2>/dev/null";
+            std::string edge_cmd = "echo falling > " + sysfs_base + "/edge";
             system(edge_cmd.c_str());
             
-            std::string wakeup_cmd = "echo enabled > " + sysfs_base + "/power/wakeup 2>/dev/null";
-            system(wakeup_cmd.c_str());
+            // Amlogic kernels often protect the /power/wakeup file unless the pin is defined as a wakeup-source in the Device Tree.
+            // We'll skip setting power/wakeup and instead use 'freeze' (s2idle) sleep state, which wakes on any standard interrupt.
         } else {
             std::cerr << "Failed to find sysfs number for " << TOUCH_PIN_INT << std::endl;
         }
@@ -941,8 +941,9 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
             g_epd_instance->sleep();
         }
 
-        // Put the Radxa Zero into deep sleep
-        system("systemctl suspend");
+        // Put the Radxa Zero into s2idle (freeze) sleep instead of deep sleep (mem).
+        // Freeze allows standard GPIO edge interrupts to wake the CPU.
+        system("echo freeze > /sys/power/state");
 
         // The CPU wakes up here after the touch interrupt!
         // Re-initialize the E-ink display controller

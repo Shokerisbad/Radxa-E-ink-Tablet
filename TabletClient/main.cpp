@@ -65,6 +65,7 @@ void create_status_bar() {
     lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
     lv_obj_align(wifi_label, LV_ALIGN_LEFT_MID, 10, 0);
     lv_obj_add_flag(wifi_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_style(wifi_label, NULL, LV_STATE_PRESSED); // no animation
     lv_obj_add_event_cb(wifi_label, [](lv_event_t *e) {
         show_wifi_menu();
     }, LV_EVENT_CLICKED, NULL);

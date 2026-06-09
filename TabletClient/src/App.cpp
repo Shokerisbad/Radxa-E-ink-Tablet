@@ -1589,6 +1589,200 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
       lv_async_call(render_ai_async_cb, new AiResponsePayload{false, "Connection failed. Server running? Err: " + httplib::to_string(res.error())});
       lvgl_mutex.unlock();
     }
+    lv_obj_clean(ai_content);
+    
+    // Explicitly make the scrollbar visible so it's obvious there's more content
+    lv_obj_set_scrollbar_mode(ai_content, LV_SCROLLBAR_MODE_ON);
+    
+    if (payload->success) {
+        try {
+            json response = json::parse(payload->raw_json_or_error);
+            if(response.contains("recommendations") && response["recommendations"].is_array()) {
+                for (auto &item : response["recommendations"]) {
+                    if (!item.is_object()) continue;
+
+                    std::string title = "Unknown Title";
+                    if(item.contains("title") && item["title"].is_string()) title = item["title"].get<std::string>();
+
+                    std::string reasoning = "";
+                    if(item.contains("reasoning") && item["reasoning"].is_string()) reasoning = item["reasoning"].get<std::string>();
+
+                    std::string book_id = "unknown";
+                    if(item.contains("id")) {
+                        if(item["id"].is_string()) book_id = item["id"].get<std::string>();
+                        else if(item["id"].is_number()) book_id = std::to_string(item["id"].get<long long>());
+                    }
+
+                    // Create item container layout (image + text)
+                    lv_obj_t* row = create_white_container(ai_content);
+                    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+                    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+                    lv_obj_set_style_pad_all(row, 5, 0);
+                    lv_obj_set_style_border_width(row, 1, 0);
+                    lv_obj_set_style_border_color(row, lv_color_hex(0xCCCCCC), 0);
+
+                    // Container for text
+                    lv_obj_t* txt_cont = create_white_container(row);
+                    lv_obj_set_size(txt_cont, 300, LV_SIZE_CONTENT);
+                    lv_obj_set_flex_flow(txt_cont, LV_FLEX_FLOW_COLUMN);
+                    lv_obj_set_style_pad_all(txt_cont, 0, 0);
+                    lv_obj_set_style_border_width(txt_cont, 0, 0);
+                    lv_obj_set_style_bg_opa(txt_cont, 0, 0);
+
+                    lv_obj_t* title_lbl = lv_label_create(txt_cont);
+                    lv_label_set_text(title_lbl, title.c_str());
+                    lv_label_set_long_mode(title_lbl, LV_LABEL_LONG_WRAP);
+                    lv_obj_set_width(title_lbl, LV_PCT(100));
+
+                    if (!reasoning.empty()) {
+                      lv_obj_t* reason_lbl = lv_label_create(txt_cont);
+                      lv_label_set_text(reason_lbl, reasoning.c_str());
+                      lv_label_set_long_mode(reason_lbl, LV_LABEL_LONG_WRAP);
+                      lv_obj_set_width(reason_lbl, LV_PCT(100));
+                    }
+
+                    if (book_id != "unknown") {
+                        std::string bmp_path = "books/.cache/ai_covers/" + book_id + ".bmp";
+                        if (std::filesystem::exists(bmp_path)) {
+                            lv_obj_t* img_obj = lv_image_create(row);
+                            lv_obj_move_to_index(img_obj, 0); // Put image on the left of text
+                            lv_img_set_src(img_obj, ("A:" + bmp_path).c_str());
+                        }
+                    }
+                }
+            } else {
+                lv_obj_t* err_lbl = lv_label_create(ai_content);
+                lv_label_set_text(err_lbl, "No recommendations array found in JSON.");
+            }
+        } catch (json::exception &e) {
+            lv_obj_t* err_lbl = lv_label_create(ai_content);
+            lv_label_set_text(err_lbl, ("JSON Parse Error: " + std::string(e.what())).c_str());
+        }
+    } else {
+        lv_obj_t* err_lbl = lv_label_create(ai_content);
+        lv_label_set_text(err_lbl, payload->raw_json_or_error.c_str());
+    }
+    
+    delete payload;
+}
+
+// --- NETWORK HTTP REQUEST ---
+static void request_ai_recommendation(const std::string &user_prompt, bool exact_match, bool use_reviews) {
+  lv_scr_load(screen_ai);
+  lv_obj_clean(ai_content);
+  lv_obj_t *loading_lbl = lv_label_create(ai_content);
+  lv_label_set_text(loading_lbl, "Thinking...");
+
+  // Run in background thread to not block LVGL UI
+  // Copy shared state under lock before entering background thread
+  std::vector<FinishedBook> books_snapshot;
+  {
+    std::lock_guard<std::recursive_mutex> lock(lvgl_mutex);
+    books_snapshot = locally_finished_books;
+  }
+
+  std::thread([user_prompt, exact_match, use_reviews, books_snapshot]() {
+    std::string target_ip = "10.8.0.1";
+    std::ifstream ip_file("llm_ip.txt");
+    if (ip_file.is_open()) {
+        std::string ip;
+        if (std::getline(ip_file, ip)) {
+            // Strip any whitespace
+            ip.erase(std::remove_if(ip.begin(), ip.end(), ::isspace), ip.end());
+            if (!ip.empty()) {
+                target_ip = ip;
+            }
+        }
+        ip_file.close();
+    }
+    
+    std::cout << "[AI] Read Dashboard IP: " << target_ip << std::endl;
+    std::cout << "[AI] Connecting to LLM API at: " << target_ip << ":8000" << std::endl;
+    httplib::Client cli(target_ip, 8000); 
+    cli.set_connection_timeout(5, 0);   
+    cli.set_read_timeout(60, 0);        
+
+    json payload = {{"user_profile", user_prompt},
+                    {"session_history", json::array()},
+                    {"rating_pref", 4.0},
+                    {"use_reviews", use_reviews},
+                    {"exact_match", exact_match},
+                    {"language", "eng"}};
+
+    json fin_books = json::array();
+    for (const auto &b : books_snapshot) {
+      fin_books.push_back({{"title", b.title},
+                           {"total_pages", b.total_pages},
+                           {"user_rating", b.user_rating}});
+    }
+    payload["finished_books"] = fin_books;
+
+    std::string dump = payload.dump();
+    std::cout << "[AI] Sending POST /api/recommend" << std::endl;
+    std::cout << "[AI] Payload: " << dump << std::endl;
+    if (auto res = cli.Post("/api/recommend", dump, "application/json")) {
+      if (res->status == 200) {
+        try {
+            json response = json::parse(res->body);
+            httplib::Client proxy_cli(target_ip, 8000); // separate client for proxy calls
+            
+            if (response.contains("recommendations") && response["recommendations"].is_array()) {
+                for (auto &item : response["recommendations"]) {
+                    if (!item.is_object()) continue;
+
+                    std::string img_url = "";
+                    if (item.contains("image_url") && item["image_url"].is_string()) {
+                        img_url = item["image_url"].get<std::string>();
+                    }
+
+                    std::string book_id = "unknown";
+                    if (item.contains("id")) {
+                        if (item["id"].is_string()) book_id = item["id"].get<std::string>();
+                        else if (item["id"].is_number()) book_id = std::to_string(item["id"].get<long long>());
+                    }
+                    
+                    if (!img_url.empty() && book_id != "unknown") {
+                       std::string enc = "";
+                       for(char c: img_url) {
+                           if(isalnum((unsigned char)c) || c=='-' || c=='_' || c=='.' || c=='~') enc += c;
+                           else { char buf[5]; snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c); enc += buf; }
+                       }
+                       std::string proxy_path = "/api/image?url=" + enc;
+                   
+                    if(auto img_res = proxy_cli.Get(proxy_path.c_str())) {
+                        if(img_res->status == 200) {
+                            int w, h, comp;
+                            unsigned char* img_data = stbi_load_from_memory(
+                                (const unsigned char*)img_res->body.c_str(), 
+                                img_res->body.size(), &w, &h, &comp, 3);
+                            
+                            if(img_data) {
+                                std::filesystem::create_directories("books/.cache/ai_covers");
+                                std::string bmp_path = "books/.cache/ai_covers/" + book_id + ".bmp";
+                                write_bmp_cover(bmp_path.c_str(), w, h, 3, img_data);
+                                stbi_image_free(img_data);
+                            }
+                        }
+                    }
+                 } // closes if (!img_url.empty() && book_id != "unknown")
+                } // closes for loop
+            } // closes if (response.contains("recommendations"))
+        } catch(...) {}
+
+        // Notify main thread
+        lvgl_mutex.lock();
+        lv_async_call(render_ai_async_cb, new AiResponsePayload{true, res->body});
+        lvgl_mutex.unlock();
+      } else {
+        lvgl_mutex.lock();
+        lv_async_call(render_ai_async_cb, new AiResponsePayload{false, "HTTP Error: " + std::to_string(res->status)});
+        lvgl_mutex.unlock();
+      }
+    } else {
+      lvgl_mutex.lock();
+      lv_async_call(render_ai_async_cb, new AiResponsePayload{false, "Connection failed. Server running? Err: " + httplib::to_string(res.error())});
+      lvgl_mutex.unlock();
+    }
   }).detach();
 }
 
@@ -1615,6 +1809,41 @@ static void wifi_connect_cb(lv_event_t * e) {
     if(wifi_pwd_modal) {
         lv_obj_del(wifi_pwd_modal);
         wifi_pwd_modal = nullptr;
+        wifi_kb = nullptr;
+        wifi_pwd_ta = nullptr;
+    }
+}
+
+static void wifi_ssid_clicked_cb(lv_event_t * e) {
+    lv_obj_t * btn = (lv_obj_t *)lv_event_get_current_target(e);
+    
+    // Find the text label inside the list button.
+    uint32_t child_cnt = lv_obj_get_child_cnt(btn);
+    for (uint32_t i = 0; i < child_cnt; i++) {
+        lv_obj_t * child = lv_obj_get_child(btn, i);
+        if (lv_obj_check_type(child, &lv_label_class)) {
+            std::string txt = lv_label_get_text(child);
+            if (txt != LV_SYMBOL_WIFI) {
+                target_ssid = txt;
+            }
+        }
+    }
+
+    if(target_ssid.empty()) return;
+
+    // Close any existing pwd modal
+    if (wifi_pwd_modal) {
+        lv_obj_del(wifi_pwd_modal);
+        wifi_pwd_modal = nullptr;
+    }
+
+    // Create password modal
+    wifi_pwd_modal = create_white_container(lv_layer_top());
+    lv_obj_set_size(wifi_pwd_modal, 440, 380);
+    lv_obj_center(wifi_pwd_modal);
+    lv_obj_set_style_border_color(wifi_pwd_modal, lv_color_black(), 0);
+    lv_obj_set_style_border_width(wifi_pwd_modal, 2, 0);
+    lv_obj_set_flex_flow(wifi_pwd_modal, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t * title = lv_label_create(wifi_pwd_modal);
     lv_label_set_text_fmt(title, "Connect to:\n%s", target_ssid.c_str());
@@ -1629,6 +1858,9 @@ static void wifi_connect_cb(lv_event_t * e) {
     // Keyboard
     wifi_kb = lv_keyboard_create(wifi_pwd_modal);
     lv_keyboard_set_textarea(wifi_kb, wifi_pwd_ta);
+    // Disable pressed animation on keyboard buttons for E-ink
+    lv_obj_set_style_bg_color(wifi_kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(wifi_kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
 
     // Buttons
     lv_obj_t * btn_row = create_white_container(wifi_pwd_modal);
@@ -1639,11 +1871,13 @@ static void wifi_connect_cb(lv_event_t * e) {
     lv_obj_t * connect_btn = create_styled_btn(btn_row);
     lv_obj_t * connect_lbl = lv_label_create(connect_btn);
     lv_label_set_text(connect_lbl, "Connect");
+    lv_obj_set_style_bg_color(connect_btn, lv_color_white(), LV_STATE_PRESSED); // no animation
     lv_obj_add_event_cb(connect_btn, wifi_connect_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t * cancel_btn = create_styled_btn(btn_row);
     lv_obj_t * cancel_lbl = lv_label_create(cancel_btn);
     lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_set_style_bg_color(cancel_btn, lv_color_white(), LV_STATE_PRESSED); // no animation
     lv_obj_add_event_cb(cancel_btn, [](lv_event_t *e){
         if(wifi_pwd_modal) {
             lv_obj_del(wifi_pwd_modal);
@@ -1677,6 +1911,7 @@ void show_wifi_menu() {
     lv_obj_t * close_btn = create_styled_btn(title_row);
     lv_obj_t * close_lbl = lv_label_create(close_btn);
     lv_label_set_text(close_lbl, "Close");
+    lv_obj_set_style_bg_color(close_btn, lv_color_white(), LV_STATE_PRESSED); // no animation
     lv_obj_add_event_cb(close_btn, [](lv_event_t *e){
         if(wifi_list_modal) {
             lv_obj_del(wifi_list_modal);
@@ -1709,6 +1944,7 @@ void show_wifi_menu() {
         lv_obj_t * btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, ssid.c_str());
         lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
         lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+        lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_PRESSED); // no animation
         lv_obj_add_event_cb(btn, wifi_ssid_clicked_cb, LV_EVENT_CLICKED, NULL);
     }
 }

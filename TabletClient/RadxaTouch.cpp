@@ -181,9 +181,12 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
             int touch_count = status & 0x0F;
             if (touch_count > 0 && touch_count <= 5) {
                 if (now < g_touch_instance->ignore_until) {
-                    // EPD is refreshing, GT911 might send spurious noise. 
-                    // Ignore new coordinate updates to prevent ghost clicks.
-                    hardware_reports_press = g_touch_instance->is_pressed; // Maintain current state
+                    // EPD is refreshing.
+                    // FORCE a release. If we maintain a 'true' state for 500-1200ms, 
+                    // LVGL will interpret it as a phantom "Long Press", triggering text 
+                    // selection cursors and sending the UI into an infinite refresh loop.
+                    hardware_reports_press = false; 
+                    g_touch_instance->is_pressed = false;
                 } else {
                     int raw_x = point_data[2] | (point_data[3] << 8);
                     int raw_y = point_data[4] | (point_data[5] << 8);
@@ -216,6 +219,11 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
         if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_press_time).count() > 100) {
             g_touch_instance->is_pressed = false;
         }
+    }
+
+    // Force release during EPD refresh ignore window, overriding any debounce or stale state
+    if (now < g_touch_instance->ignore_until) {
+        g_touch_instance->is_pressed = false;
     }
 
     // Report state to LVGL

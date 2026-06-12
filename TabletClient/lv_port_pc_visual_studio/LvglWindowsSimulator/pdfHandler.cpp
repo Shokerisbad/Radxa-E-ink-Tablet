@@ -249,11 +249,11 @@ bool PdfHandler::getMetadata(const std::string& filepath, std::string& title_out
     }
     fz_always(ctx) {
         if (doc) fz_drop_document(ctx, doc);
-        fz_drop_context(ctx);
     }
     fz_catch(ctx) {
         success = false;
     }
+    fz_drop_context(ctx);
 
     return success;
 }

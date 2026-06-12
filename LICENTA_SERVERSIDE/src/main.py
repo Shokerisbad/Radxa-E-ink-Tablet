@@ -75,7 +75,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         
         # FTS5 rank is mathematically negative (lower is better), which perfectly mimics Chroma L2 distance!
         df_query = """
-            SELECT book_id as id, title, average_rating, image_url, description, tags, publication_year, num_pages, rank as similarity_score
+            SELECT book_id as id, title, average_rating, ratings_count, image_url, description, tags, publication_year, num_pages, rank as similarity_score
             FROM books
             WHERE books MATCH ? AND (language_code = ? OR language_code = 'en-US' OR language_code = 'en-GB' OR language_code = '')
             ORDER BY rank
@@ -98,13 +98,27 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         return []
         
     # 3. Hybrid Semantic-Popularity Sort
-    # The pure 'average_rating' sort was bubbling unrelated books to the top just because they were 5-stars.
-    # We now prioritize the exact semantic match (L2 Distance: lower is better) but give a slight distance reduction bonus to highly rated books.
-    if 'average_rating' in candidates_df.columns and 'similarity_score' in candidates_df.columns:
-        candidates_df['average_rating'] = candidates_df['average_rating'].apply(lambda x: float(x) if pd.notnull(x) else 0.0)
+    # We prioritize the exact semantic match (L2 Distance: lower is better) but apply a distance reduction bonus 
+    # to highly rated books and a distance penalty to low rated books, using a Bayesian Average.
+    if 'average_rating' in candidates_df.columns and 'similarity_score' in candidates_df.columns and 'ratings_count' in candidates_df.columns:
+        candidates_df['average_rating'] = pd.to_numeric(candidates_df['average_rating'], errors='coerce').fillna(0.0)
+        candidates_df['ratings_count'] = pd.to_numeric(candidates_df['ratings_count'], errors='coerce').fillna(0)
         
-        # A 5.0 rating gives a -0.15 distance bonus, allowing famous books to edge out obscure books IF they are semantically tied.
-        candidates_df['hybrid_score'] = candidates_df['similarity_score'] - (candidates_df['average_rating'] / 5.0) * 0.15
+        # Bayesian Average: C = 3.8 (dataset mean rating), m = 1000 (min votes to be confident)
+        C = 3.8
+        m = 1000.0
+        
+        v = candidates_df['ratings_count']
+        R = candidates_df['average_rating']
+        
+        bayesian_rating = (v / (v + m)) * R + (m / (v + m)) * C
+        
+        # Mean-Centered Penalty: Center the rating around 3.8
+        centered_rating = bayesian_rating - C
+        
+        # A positive centered_rating (good book) reduces distance (makes it better).
+        # A negative centered_rating (bad book) increases distance (penalizes it).
+        candidates_df['hybrid_score'] = candidates_df['similarity_score'] - (centered_rating / 1.2) * 0.15
         
         candidates_df = candidates_df.sort_values(by='hybrid_score', ascending=True)
         

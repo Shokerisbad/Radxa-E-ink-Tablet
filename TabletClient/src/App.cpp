@@ -237,7 +237,10 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_set_style_radius(btn, 5, 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
     lv_obj_set_style_transform_width(btn, 0, LV_STATE_PRESSED);
     lv_obj_set_style_transform_height(btn, 0, LV_STATE_PRESSED);
     lv_obj_set_style_translate_y(btn, 0, LV_STATE_PRESSED);
@@ -330,6 +333,9 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
 
   // Disable pressed animations to prevent e-ink ghosting/double refresh
   lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+  lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(row, lv_color_hex(0x000000), LV_STATE_PRESSED);
+  lv_obj_set_style_border_color(row, lv_color_hex(0x000000), LV_STATE_PRESSED);
   lv_obj_set_style_transform_width(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_transform_height(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_translate_y(row, 0, LV_STATE_PRESSED);
@@ -2267,8 +2273,14 @@ void show_wifi_menu() {
     for(const auto& ssid : ssids) {
         lv_obj_t * btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, ssid.c_str());
         lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
         lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+        
         lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_PRESSED); // no animation
+        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_set_style_text_color(btn, lv_color_black(), LV_STATE_PRESSED);
+        lv_obj_set_style_border_color(btn, lv_color_black(), LV_STATE_PRESSED);
+        
         lv_obj_set_style_transition(btn, &no_trans_dsc, 0);
         lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_PRESSED);
         lv_obj_set_style_anim_duration(btn, 0, 0);

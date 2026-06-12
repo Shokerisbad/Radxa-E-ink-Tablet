@@ -1,5 +1,7 @@
 # Python & Machine Learning Data
 LICENTA_SERVERSIDE/data/
+LICENTA_SERVERSIDE/data - Copy/
+LICENTA_SERVERSIDE/data copy/
 __pycache__/
 *.pyc
 .venv/
@@ -32,6 +34,11 @@ CMakeFiles/
 
 # Cache
 books/.cache/
+TabletClient/lv_port_pc_visual_studio/LvglWindowsSimulator/books/
 
 # Licenta DOC folder
 Licenta DOC/
+
+# LLM IP configuration
+llm_ip.txt
+**/llm_ip.txt

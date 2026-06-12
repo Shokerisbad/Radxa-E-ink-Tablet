@@ -50,7 +50,8 @@ class CandidateGenerator:
                     "publication_year": str(row.get("publication_year", "")),
                     "num_pages": str(row.get("num_pages", "")),
                     "image_url": str(row.get("image_url", "")),
-                    "language_code": str(row.get("language_code", ""))
+                    "language_code": str(row.get("language_code", "")),
+                    "ratings_count": int(row.get("ratings_count", 0))
                 }
             )
             docs.append(doc)

@@ -170,15 +170,8 @@ static auto last_press_time = std::chrono::steady_clock::now();
 void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
     if (!g_touch_instance) return;
 
-    // Check if we are in a cooling-off period (e.g. during/after an E-ink refresh)
-    if (std::chrono::steady_clock::now() < g_touch_instance->ignore_until) {
-        g_touch_instance->write_reg(0x814E, 0x00); // Clear buffer so it doesn't pile up
-        g_touch_instance->is_pressed = false;
-        data->state = LV_INDEV_STATE_RELEASED;
-        return;
-    }
-
     uint8_t point_data[10] = {0};
+    auto now = std::chrono::steady_clock::now();
     bool hardware_reports_press = false;
 
     // Read 10 bytes starting from 0x814E (Buffer Status) in a single transaction.
@@ -187,28 +180,30 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
         if (status & 0x80) { // Buffer status bit (1 = data ready)
             int touch_count = status & 0x0F;
             if (touch_count > 0 && touch_count <= 5) {
-                int raw_x = point_data[2] | (point_data[3] << 8);
-                int raw_y = point_data[4] | (point_data[5] << 8);
+                if (now < g_touch_instance->ignore_until) {
+                    // EPD is refreshing, GT911 might send spurious noise. 
+                    // Ignore new coordinate updates to prevent ghost clicks.
+                    hardware_reports_press = g_touch_instance->is_pressed; // Maintain current state
+                } else {
+                    int raw_x = point_data[2] | (point_data[3] << 8);
+                    int raw_y = point_data[4] | (point_data[5] << 8);
 
-                // Map to LVGL Logical Portrait (480x800).
-                int log_x = raw_y;
-                int log_y = 799 - raw_x;
+                    // Map to LVGL Logical Portrait (480x800).
+                    int log_x = raw_y;
+                    int log_y = 799 - raw_x;
 
-                // Clamp to prevent LVGL warnings
-                if (log_x < 0) log_x = 0;
-                if (log_x > 479) log_x = 479;
-                if (log_y < 0) log_y = 0;
-                if (log_y > 799) log_y = 799;
+                    // Clamp to prevent LVGL warnings
+                    if (log_x < 0) log_x = 0;
+                    if (log_x > 479) log_x = 479;
+                    if (log_y < 0) log_y = 0;
+                    if (log_y > 799) log_y = 799;
 
-                g_touch_instance->last_x = log_x;
-                g_touch_instance->last_y = log_y;
-                g_touch_instance->is_pressed = true;
-                
-                hardware_reports_press = true;
-                last_press_time = std::chrono::steady_clock::now();
-
-                // std::cout << "Touch mapped: Hardware(" << raw_x << ", " << raw_y 
-                //          << ") -> LVGL(" << log_x << ", " << log_y << ")" << std::endl;
+                    g_touch_instance->last_x = log_x;
+                    g_touch_instance->last_y = log_y;
+                    g_touch_instance->is_pressed = true;
+                    
+                    hardware_reports_press = true;
+                }
             }
 
             // CRITICAL: Clear the status buffer so GT911 registers the next touch
@@ -216,15 +211,8 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
         }
     }
 
-    // SOFTWARE DEBOUNCE:
-    // GT911 occasionally drops frames, reports 0 touches transiently, or I2C reads fail.
-    // If the hardware did not report a press this cycle, we wait 100ms before declaring a release.
-    // This perfectly masks hardware bouncing and makes single taps and long-presses completely stable.
     if (!hardware_reports_press) {
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_press_time).count() > 100) {
-            g_touch_instance->is_pressed = false;
-        }
+        g_touch_instance->is_pressed = false;
     }
 
     // Report state to LVGL

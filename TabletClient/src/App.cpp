@@ -1263,33 +1263,18 @@ static void fetch_dict_bg(std::string word) {
     }).detach();
 }
 
-static uint32_t dict_press_time = 0;
-static lv_point_t dict_press_point = {0,0};
-
 static void reader_label_clicked_cb(lv_event_t * e) {
     if (!reader_content_label) return;
     
     lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_LONG_PRESSED) return;
+    
     lv_indev_t * indev = lv_indev_active();
     if (!indev) return;
     
-    if (code == LV_EVENT_PRESSED) {
-        dict_press_time = lv_tick_get();
-        lv_indev_get_point(indev, &dict_press_point);
-        return;
-    }
-    
-    if (code != LV_EVENT_RELEASED) return;
-    
-    lv_point_t release_point;
-    lv_indev_get_point(indev, &release_point);
-    
-    // Check if held for > 500ms and didn't move more than 25 pixels
-    if (lv_tick_elaps(dict_press_time) < 500) return;
-    if (abs(release_point.x - dict_press_point.x) > 25 || 
-        abs(release_point.y - dict_press_point.y) > 25) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
         
-    lv_point_t p = release_point;
     lv_area_t coords;
     lv_obj_get_coords(reader_content_label, &coords);
     p.x -= coords.x1;

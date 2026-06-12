@@ -231,27 +231,14 @@ enum SortMode {
 // --- STYLED BUTTON HELPER ---
 static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_t * btn = lv_btn_create(parent);
+    lv_obj_remove_style_all(btn); // Strip ALL default theme styles
     lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), 0);
     lv_obj_set_style_border_color(btn, lv_color_hex(0x000000), 0);
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_set_style_radius(btn, 5, 0);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
-    lv_obj_set_style_transform_width(btn, 0, LV_STATE_PRESSED);
-    lv_obj_set_style_transform_height(btn, 0, LV_STATE_PRESSED);
-    lv_obj_set_style_translate_y(btn, 0, LV_STATE_PRESSED);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_set_style_shadow_width(btn, 0, LV_STATE_PRESSED);
-    lv_obj_set_style_anim_duration(btn, 0, 0); // Disable state transition animations
-    lv_obj_set_style_transition(btn, &no_trans_dsc, 0);
-    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_PRESSED);
-    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_FOCUSED);
-    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_FOCUS_KEY);
-    lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_set_style_pad_all(btn, 15, 0); // Need to manually add padding now
     return btn;
 }
 
@@ -299,6 +286,7 @@ static lv_obj_t * create_white_container(lv_obj_t * parent) {
 // --- PRS-505 MENU ROW HELPER ---
 static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char* title, const char* subtitle) {
   lv_obj_t* row = lv_btn_create(parent);
+  lv_obj_remove_style_all(row);
   lv_obj_set_size(row, LV_PCT(100), 65); // Full width
   lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
@@ -330,22 +318,6 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
     lv_label_set_text(lbl_sub, subtitle);
     lv_obj_align(lbl_sub, LV_ALIGN_RIGHT_MID, -10, 0);
   }
-
-  // Disable pressed animations to prevent e-ink ghosting/double refresh
-  lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
-  lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(row, lv_color_hex(0x000000), LV_STATE_PRESSED);
-  lv_obj_set_style_border_color(row, lv_color_hex(0x000000), LV_STATE_PRESSED);
-  lv_obj_set_style_transform_width(row, 0, LV_STATE_PRESSED);
-  lv_obj_set_style_transform_height(row, 0, LV_STATE_PRESSED);
-  lv_obj_set_style_translate_y(row, 0, LV_STATE_PRESSED);
-  lv_obj_set_style_shadow_width(row, 0, LV_STATE_PRESSED);
-  lv_obj_set_style_anim_duration(row, 0, 0);
-  lv_obj_set_style_transition(row, &no_trans_dsc, 0);
-  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_PRESSED);
-  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_FOCUSED);
-  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_FOCUS_KEY);
-  lv_obj_remove_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
 
   return row;
 }
@@ -2272,18 +2244,12 @@ void show_wifi_menu() {
 
     for(const auto& ssid : ssids) {
         lv_obj_t * btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, ssid.c_str());
+        lv_obj_remove_style_all(btn);
         lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
         lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
         lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+        lv_obj_set_style_pad_all(btn, 10, 0);
         
-        lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_PRESSED); // no animation
-        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
-        lv_obj_set_style_text_color(btn, lv_color_black(), LV_STATE_PRESSED);
-        lv_obj_set_style_border_color(btn, lv_color_black(), LV_STATE_PRESSED);
-        
-        lv_obj_set_style_transition(btn, &no_trans_dsc, 0);
-        lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_PRESSED);
-        lv_obj_set_style_anim_duration(btn, 0, 0);
         lv_obj_add_event_cb(btn, wifi_ssid_clicked_cb, LV_EVENT_CLICKED, NULL);
     }
 }

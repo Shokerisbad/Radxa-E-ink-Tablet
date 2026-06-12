@@ -13,56 +13,60 @@
 RadxaTouch *g_touch_instance = nullptr;
 
 RadxaTouch::RadxaTouch() : i2c_fd(-1), i2c_addr(GT911_I2C_ADDR_28), last_x(0), last_y(0), is_pressed(false) {
+#ifndef _WIN32
+    line_rst = nullptr;
+    line_int = nullptr;
+#endif
     ignore_until = std::chrono::steady_clock::now();
     g_touch_instance = this;
 }
 
 RadxaTouch::~RadxaTouch() {
     if (i2c_fd >= 0) close(i2c_fd);
+#ifndef _WIN32
+    if (line_rst) gpiod_line_release(line_rst);
+    if (line_int) gpiod_line_release(line_int);
+#endif
 }
 
 bool RadxaTouch::init_gpio() {
-    int sysfs_rst = get_sysfs_gpio_number(TOUCH_PIN_RST);
-    int sysfs_int = get_sysfs_gpio_number(TOUCH_PIN_INT);
+#ifndef _WIN32
+    line_rst = gpiod_line_find(TOUCH_PIN_RST);
+    line_int = gpiod_line_find(TOUCH_PIN_INT);
 
-    if (sysfs_rst == -1) std::cerr << "Failed to find Touch RST pin: " << TOUCH_PIN_RST << std::endl;
-    if (sysfs_int == -1) std::cerr << "Failed to find Touch INT pin: " << TOUCH_PIN_INT << std::endl;
+    if (!line_rst) std::cerr << "Failed to find Touch RST pin: " << TOUCH_PIN_RST << std::endl;
+    if (!line_int) std::cerr << "Failed to find Touch INT pin: " << TOUCH_PIN_INT << std::endl;
 
-    if (sysfs_rst == -1 || sysfs_int == -1) return false;
-
-    // Export both pins
-    system(("echo " + std::to_string(sysfs_rst) + " > /sys/class/gpio/export 2>/dev/null").c_str());
-    system(("echo " + std::to_string(sysfs_int) + " > /sys/class/gpio/export 2>/dev/null").c_str());
+    if (!line_rst || !line_int) return false;
 
     // Setup RST as output, HIGH (not resetting)
-    system(("echo out > /sys/class/gpio/gpio" + std::to_string(sysfs_rst) + "/direction 2>/dev/null").c_str());
-    system(("echo 1 > /sys/class/gpio/gpio" + std::to_string(sysfs_rst) + "/value 2>/dev/null").c_str());
+    gpiod_line_request_output(line_rst, "touch_rst", 1);
 
     // INT starts as input — we only read it, never drive it initially
-    system(("echo in > /sys/class/gpio/gpio" + std::to_string(sysfs_int) + "/direction 2>/dev/null").c_str());
-
+    gpiod_line_request_input(line_int, "touch_int");
+#endif
     return true;
 }
 
 void RadxaTouch::reset_controller() {
-    int sysfs_rst = get_sysfs_gpio_number(TOUCH_PIN_RST);
-    int sysfs_int = get_sysfs_gpio_number(TOUCH_PIN_INT);
-
-    if (sysfs_rst == -1 || sysfs_int == -1) return;
+#ifndef _WIN32
+    if (!line_rst || !line_int) return;
 
     // To select address 0x5D (0xBA) per GT911 spec, the INT pin must be held LOW during the reset sequence.
-    system(("echo out > /sys/class/gpio/gpio" + std::to_string(sysfs_int) + "/direction 2>/dev/null").c_str());
-    system(("echo 0 > /sys/class/gpio/gpio" + std::to_string(sysfs_int) + "/value 2>/dev/null").c_str());
+    gpiod_line_release(line_int);
+    gpiod_line_request_output(line_int, "touch_int_out", 0);
 
-    system(("echo 0 > /sys/class/gpio/gpio" + std::to_string(sysfs_rst) + "/value 2>/dev/null").c_str());
+    gpiod_line_set_value(line_rst, 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     
-    system(("echo 1 > /sys/class/gpio/gpio" + std::to_string(sysfs_rst) + "/value 2>/dev/null").c_str());
+    gpiod_line_set_value(line_rst, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
 
     // Release INT line back to input mode for GT911 interrupt monitoring
-    system(("echo in > /sys/class/gpio/gpio" + std::to_string(sysfs_int) + "/direction 2>/dev/null").c_str());
+    gpiod_line_release(line_int);
+    gpiod_line_request_input(line_int, "touch_int_in");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+#endif
 }
 
 bool RadxaTouch::init_i2c() {

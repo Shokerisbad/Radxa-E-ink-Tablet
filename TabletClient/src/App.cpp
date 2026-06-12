@@ -1079,7 +1079,7 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_textarea_set_one_line(ta, true);
   lv_textarea_set_accepted_chars(ta, "0123456789");
   lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 40);
-  lv_obj_set_style_anim_duration(ta, 0, LV_PART_CURSOR);
+  lv_obj_set_style_anim_duration(ta, 0, LV_PART_CURSOR); // 0 tells LVGL to delete the cursor blink animation entirely
   lv_obj_set_style_opa(ta, 0, LV_PART_CURSOR);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
@@ -1906,7 +1906,8 @@ void build_tablet_ui() {
   lv_obj_set_style_bg_color(ai_input_ta, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
   lv_obj_set_style_text_color(ai_input_ta, lv_color_hex(0x000000), LV_PART_MAIN);
 
-  // Disable blinking cursor to prevent infinite e-ink refresh loops!
+  // Disable blinking cursor to prevent e-ink refresh loops.
+  // Setting anim_duration to 0 tells LVGL to delete the cursor blink animation entirely (see lv_textarea.c:start_cursor_blink).
   lv_obj_set_style_anim_duration(ai_input_ta, 0, LV_PART_CURSOR);
   lv_obj_set_style_opa(ai_input_ta, 0, LV_PART_CURSOR);
 
@@ -1994,39 +1995,42 @@ void build_tablet_ui() {
   };
   AiKbCtx *kb_ctx = new AiKbCtx{ai_kb, ai_content};
 
-  lv_obj_add_event_cb(
-      ai_input_ta,
-      [](lv_event_t *e) {
-        AiKbCtx *ctx = (AiKbCtx *)lv_event_get_user_data(e);
-        lv_event_code_t code = lv_event_get_code(e);
-        lv_obj_t *ta = (lv_obj_t *)lv_event_get_target(e);
-        
-        if (code == LV_EVENT_FOCUSED) {
-          lv_obj_clear_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          // Shrink content to make room for keyboard below it
-          lv_obj_set_height(ctx->content, 300);
-        } else if (code == LV_EVENT_DEFOCUSED) {
-          lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_height(ctx->content, 600);
-        } else if (code == LV_EVENT_READY) {
-          // Checkmark / Enter key pressed on keyboard
-          const char *txt = lv_textarea_get_text(ta);
-          if (txt && strlen(txt) > 0) {
-            request_ai_recommendation(txt, true);
-            lv_textarea_set_text(ta, "");
-          }
-          // Hide keyboard and drop focus
-          lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_height(ctx->content, 600);
-          lv_obj_remove_state(ta, LV_STATE_FOCUSED);
-        } else if (code == LV_EVENT_CANCEL) {
-          // Cancel / Close keyboard
-          lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
-          lv_obj_set_height(ctx->content, 600);
-          lv_obj_remove_state(ta, LV_STATE_FOCUSED);
-        }
-      },
-      LV_EVENT_ALL, kb_ctx);
+  // Show keyboard when textarea is focused
+  lv_obj_add_event_cb(ai_input_ta, [](lv_event_t *e) {
+    AiKbCtx *ctx = (AiKbCtx *)lv_event_get_user_data(e);
+    lv_obj_clear_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(ctx->content, 300);
+  }, LV_EVENT_FOCUSED, kb_ctx);
+
+  // Hide keyboard when textarea loses focus
+  lv_obj_add_event_cb(ai_input_ta, [](lv_event_t *e) {
+    AiKbCtx *ctx = (AiKbCtx *)lv_event_get_user_data(e);
+    lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(ctx->content, 600);
+  }, LV_EVENT_DEFOCUSED, kb_ctx);
+
+  // Enter key pressed on keyboard
+  lv_obj_add_event_cb(ai_input_ta, [](lv_event_t *e) {
+    AiKbCtx *ctx = (AiKbCtx *)lv_event_get_user_data(e);
+    lv_obj_t *ta = (lv_obj_t *)lv_event_get_target(e);
+    const char *txt = lv_textarea_get_text(ta);
+    if (txt && strlen(txt) > 0) {
+      request_ai_recommendation(txt, true);
+      lv_textarea_set_text(ta, "");
+    }
+    lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(ctx->content, 600);
+    lv_obj_remove_state(ta, LV_STATE_FOCUSED);
+  }, LV_EVENT_READY, kb_ctx);
+
+  // Cancel / Close keyboard
+  lv_obj_add_event_cb(ai_input_ta, [](lv_event_t *e) {
+    AiKbCtx *ctx = (AiKbCtx *)lv_event_get_user_data(e);
+    lv_obj_t *ta = (lv_obj_t *)lv_event_get_target(e);
+    lv_obj_add_flag(ctx->kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(ctx->content, 600);
+    lv_obj_remove_state(ta, LV_STATE_FOCUSED);
+  }, LV_EVENT_CANCEL, kb_ctx);
 
   // Start the inactivity sleep timer (checks every 1 second)
   lv_timer_create(inactivity_sleep_timer_cb, 1000, NULL);

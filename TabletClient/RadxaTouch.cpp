@@ -203,6 +203,7 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
                     g_touch_instance->is_pressed = true;
                     
                     hardware_reports_press = true;
+                    last_press_time = now;
                 }
             }
 
@@ -212,7 +213,9 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
     }
 
     if (!hardware_reports_press) {
-        g_touch_instance->is_pressed = false;
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_press_time).count() > 100) {
+            g_touch_instance->is_pressed = false;
+        }
     }
 
     // Report state to LVGL

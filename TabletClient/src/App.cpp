@@ -1283,7 +1283,10 @@ static void reader_label_clicked_cb(lv_event_t * e) {
     uint32_t char_idx = lv_label_get_letter_on(reader_content_label, &p, false);
     
     std::string text = lv_label_get_text(reader_content_label);
-    if (char_idx >= text.length()) return;
+    
+    // Convert LVGL's logical character index to an actual UTF-8 byte index
+    uint32_t byte_idx = lv_text_encoded_get_byte_id(text.c_str(), char_idx);
+    if (byte_idx >= text.length()) return;
     
     auto is_boundary = [](char c) {
         return c == ' ' || c == '\n' || c == '\t' || c == '.' || c == ',' || 
@@ -1291,8 +1294,8 @@ static void reader_label_clicked_cb(lv_event_t * e) {
                c == '\'' || c == '(' || c == ')';
     };
     
-    int start_idx = char_idx;
-    int end_idx = char_idx;
+    int start_idx = byte_idx;
+    int end_idx = byte_idx;
     
     while (start_idx > 0 && !is_boundary(text[start_idx - 1])) start_idx--;
     while (end_idx < text.length() && !is_boundary(text[end_idx])) end_idx++;

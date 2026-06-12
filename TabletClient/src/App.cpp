@@ -254,6 +254,8 @@ static void disable_kb_animations(lv_obj_t* kb) {
     // Explicitly make unpressed and pressed states identical
     lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
     lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS);
     lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
     
@@ -2133,6 +2135,7 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     wifi_pwd_ta = lv_textarea_create(wifi_pwd_modal);
     lv_textarea_set_one_line(wifi_pwd_ta, true);
     lv_textarea_set_password_mode(wifi_pwd_ta, true);
+    lv_textarea_set_password_show_time(wifi_pwd_ta, 0); // Immediately show bullets, skipping the plain-text phase to save e-ink refreshes
     lv_textarea_set_placeholder_text(wifi_pwd_ta, "Password");
     lv_obj_set_width(wifi_pwd_ta, LV_PCT(90));
     lv_obj_set_style_border_width(wifi_pwd_ta, 2, LV_PART_MAIN);

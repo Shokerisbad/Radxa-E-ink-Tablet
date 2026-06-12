@@ -1285,7 +1285,16 @@ static void reader_label_clicked_cb(lv_event_t * e) {
     std::string text = lv_label_get_text(reader_content_label);
     
     // Convert LVGL's logical character index to an actual UTF-8 byte index
-    uint32_t byte_idx = lv_text_encoded_get_byte_id(text.c_str(), char_idx);
+    uint32_t byte_idx = 0;
+    uint32_t logical_count = 0;
+    while (byte_idx < text.length() && logical_count < char_idx) {
+        byte_idx++;
+        // Skip UTF-8 continuation bytes (binary 10xxxxxx)
+        while (byte_idx < text.length() && (text[byte_idx] & 0xC0) == 0x80) {
+            byte_idx++;
+        }
+        logical_count++;
+    }
     if (byte_idx >= text.length()) return;
     
     auto is_boundary = [](char c) {

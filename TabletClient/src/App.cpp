@@ -2049,9 +2049,9 @@ static void render_ai_async_cb(void* user_data) {
                     lv_obj_t* row = create_white_container(ai_content);
                     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
                     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-                    lv_obj_set_style_pad_all(row, 5, 0);
-                    lv_obj_set_style_border_width(row, 1, 0);
-                    lv_obj_set_style_border_color(row, lv_color_hex(0xCCCCCC), 0);
+                    lv_obj_set_style_pad_all(row, 10, 0);
+                    lv_obj_set_style_border_width(row, 2, 0);
+                    lv_obj_set_style_border_color(row, lv_color_hex(0x000000), 0);
 
                     // Container for text
                     lv_obj_t* txt_cont = create_white_container(row);
@@ -2078,7 +2078,7 @@ static void render_ai_async_cb(void* user_data) {
                         if (std::filesystem::exists(bmp_path)) {
                             lv_obj_t* img_obj = lv_image_create(row);
                             lv_obj_move_to_index(img_obj, 0); // Put image on the left of text
-                            lv_img_set_src(img_obj, ("A:" + bmp_path).c_str());
+                            lv_image_set_src(img_obj, bmp_path.c_str());
                         }
                     }
                 }

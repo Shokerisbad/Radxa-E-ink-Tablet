@@ -55,6 +55,7 @@ def startup_event():
         print(f"Failed to initialize recommender models: {e}")
         sys.exit(1)
 
+import ssl
 import urllib.request
 from fastapi.responses import Response
 
@@ -67,7 +68,10 @@ def proxy_image(url: str):
     """
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as response:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
             data = response.read()
             content_type = response.headers.get('Content-Type', 'image/jpeg')
             return Response(content=data, media_type=content_type)

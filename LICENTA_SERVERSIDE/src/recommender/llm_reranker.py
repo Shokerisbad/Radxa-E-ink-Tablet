@@ -117,8 +117,12 @@ Example output:
                     # Also fallback title if missing
                     merged['title'] = merged.get('title', item.get('title', 'Unknown'))
                     merged['reasoning'] = item.get('reasoning', '')
-                    # ensure image_url is cast to string
-                    merged['image_url'] = str(merged.get('image_url', ''))
+                    # ensure image_url is cast to string safely, avoiding "nan"
+                    img_val = merged.get('image_url', '')
+                    if pd.isna(img_val) or str(img_val).strip().lower() in ['nan', 'none']:
+                        merged['image_url'] = ''
+                    else:
+                        merged['image_url'] = str(img_val)
                     
                     final_list.append(merged)
                     seen_ids.add(book_id)
@@ -128,7 +132,11 @@ Example output:
                 if book_id not in seen_ids:
                     merged = row_dict.copy()
                     merged['id'] = book_id
-                    merged['image_url'] = str(merged.get('image_url', ''))
+                    img_val = merged.get('image_url', '')
+                    if pd.isna(img_val) or str(img_val).strip().lower() in ['nan', 'none']:
+                        merged['image_url'] = ''
+                    else:
+                        merged['image_url'] = str(img_val)
                     final_list.append(merged)
                     
             return final_list
@@ -142,6 +150,10 @@ Example output:
             for _, row in candidates_df.iterrows():
                 r = row.to_dict()
                 r['id'] = str(r.get('id', r.get('book_id', '')))
-                r['image_url'] = str(r.get('image_url', ''))
+                img_val = r.get('image_url', '')
+                if pd.isna(img_val) or str(img_val).strip().lower() in ['nan', 'none']:
+                    r['image_url'] = ''
+                else:
+                    r['image_url'] = str(img_val)
                 fallback.append(r)
             return fallback

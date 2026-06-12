@@ -139,8 +139,16 @@ void RadxaEPD::send_data_array(const uint8_t *data, size_t len) {
 }
 
 void RadxaEPD::wait_until_idle() {
+  auto start = std::chrono::steady_clock::now();
+  const int TIMEOUT_MS = 10000; // 10 second safety timeout
   while (gpiod_line_get_value(line_busy) == 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    if (elapsed > TIMEOUT_MS) {
+      std::cerr << "EPD BUSY timeout after " << TIMEOUT_MS << "ms! Forcing continue." << std::endl;
+      break;
+    }
   }
 }
 

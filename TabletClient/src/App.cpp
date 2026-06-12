@@ -789,7 +789,18 @@ static void show_chapters_modal_cb(lv_event_t *e) {
 #include "../RadxaEPD.h"
 
 static void font_size_toggle_cb(lv_event_t * e) {
-    lv_obj_t * row = (lv_obj_t *)lv_event_get_target(e);
+    // Debounce: EPD partial refreshes cause GT911 touch glitches that
+    // generate spurious double-click events. Ignore clicks within 300ms.
+    static auto last_toggle = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_toggle).count() < 300) {
+        return;
+    }
+    last_toggle = now;
+
+    // Use current_target (the row we registered the callback on), not target
+    // (which could be a child label the user actually tapped on)
+    lv_obj_t * row = (lv_obj_t *)lv_event_get_current_target(e);
     g_current_font_index = (g_current_font_index + 1) % g_font_options.size();
     
     // Update label
@@ -1129,11 +1140,11 @@ static void global_gesture_cb(lv_event_t *e) {
   lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
 
   if (screen == screen_book_reader) {
-    if (dir == LV_DIR_RIGHT) {
-      // Swipe to the right -> next page
+    if (dir == LV_DIR_LEFT) {
+      // Swipe to the left -> next page
       reader_next_cb(nullptr);
-    } else if (dir == LV_DIR_LEFT) {
-      // Swipe to the left -> previous page
+    } else if (dir == LV_DIR_RIGHT) {
+      // Swipe to the right -> previous page
       reader_prev_cb(nullptr);
     }
   } else if (screen == screen_library) {
@@ -1731,7 +1742,7 @@ void build_tablet_ui() {
   lv_obj_set_scroll_dir(reader_body, LV_DIR_VER);
   lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(reader_body, hide_bottombar_cb, LV_EVENT_CLICKED, NULL);
-  lv_obj_set_size(reader_body, 480, 760); // 800 - 30 (status bar) - 10 (breathing room)
+  lv_obj_set_size(reader_body, 480, 730); // 800 - 30 (status bar) - 40 (page counter clearance)
   lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 30);
   lv_obj_set_style_bg_color(reader_body, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(reader_body, LV_OPA_COVER, 0);

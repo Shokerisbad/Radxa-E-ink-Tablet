@@ -200,12 +200,12 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
 
 
 void EpubHandler::paginateText(const std::string &text, int chars_per_line, int line_height) {
-  // The reader_body is 760px tall, starting at y=30.
+  // The reader_body is 730px tall, starting at y=30.
   // We need a dynamic safety margin that grows with font size because larger
   // fonts have more variance between estimated and actual LVGL line wrapping.
   // At 14pt (line_height=16) the margin is ~10px, at 26pt (line_height=32) it's ~42px.
   const int SAFETY_MARGIN = 10 + line_height;
-  const int SCREEN_MAX_HEIGHT = 760 - SAFETY_MARGIN;
+  const int SCREEN_MAX_HEIGHT = 730 - SAFETY_MARGIN;
   
   m_pages.clear();
   m_pageOffsets.clear();

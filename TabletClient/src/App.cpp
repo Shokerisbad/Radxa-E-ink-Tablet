@@ -2102,7 +2102,8 @@ static void render_ai_async_cb(void* user_data) {
                         if (std::filesystem::exists(bmp_path)) {
                             lv_obj_t* img_obj = lv_image_create(row);
                             lv_obj_move_to_index(img_obj, 0); // Put image on the left of text
-                            lv_image_set_src(img_obj, bmp_path.c_str());
+                            std::string lvgl_path = "A:" + bmp_path;
+                            lv_image_set_src(img_obj, lvgl_path.c_str());
                         }
                     }
                 }

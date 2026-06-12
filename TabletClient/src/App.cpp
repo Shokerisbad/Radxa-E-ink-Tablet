@@ -253,6 +253,34 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
 }
 
 
+static void disable_kb_animations(lv_obj_t* kb) {
+    lv_keyboard_set_popovers(kb, false);
+    lv_obj_set_style_anim_duration(kb, 0, LV_PART_ITEMS);
+    lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS);
+    lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
+    lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
+    
+    // Explicitly make unpressed and pressed states identical
+    lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS);
+    lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
+    
+    // Nullify transforms that might happen on press
+    lv_obj_set_style_transform_width(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_transform_height(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_translate_y(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS);
+    
+    // Set a border so we can see the buttons since they are all white
+    lv_obj_set_style_border_width(kb, 1, LV_PART_ITEMS);
+    lv_obj_set_style_border_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS);
+    lv_obj_set_style_border_width(kb, 1, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
+}
+
 static lv_obj_t * create_white_container(lv_obj_t * parent) {
     lv_obj_t * cont = lv_obj_create(parent);
     lv_obj_set_style_bg_color(cont, lv_color_hex(0xFFFFFF), 0);
@@ -1051,16 +1079,7 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_obj_set_style_opa(ta, 0, LV_PART_CURSOR);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
-  lv_keyboard_set_popovers(kb, false);
-  lv_obj_set_style_anim_duration(kb, 0, LV_PART_ITEMS);
-  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS);
-  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
-  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
-  lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_transform_width(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_transform_height(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+  disable_kb_animations(kb);
   lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_NUMBER);
   lv_keyboard_set_textarea(kb, ta);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
@@ -1809,16 +1828,7 @@ void build_tablet_ui() {
 
   // Create keyboard but keep hidden
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);
-  lv_keyboard_set_popovers(ai_kb, false);
-  lv_obj_set_style_anim_duration(ai_kb, 0, LV_PART_ITEMS);
-  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS);
-  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
-  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
-  lv_obj_set_style_bg_color(ai_kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_text_color(ai_kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_transform_width(ai_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
-  lv_obj_set_style_transform_height(ai_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+  disable_kb_animations(ai_kb);
   lv_keyboard_set_textarea(ai_kb, ai_input_ta);
   lv_obj_add_flag(ai_kb, LV_OBJ_FLAG_HIDDEN);
 
@@ -2171,17 +2181,7 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     // Keyboard
     wifi_kb = lv_keyboard_create(wifi_pwd_modal);
     lv_keyboard_set_textarea(wifi_kb, wifi_pwd_ta);
-    lv_keyboard_set_popovers(wifi_kb, false);
-    // Disable pressed animation on keyboard buttons for E-ink
-    lv_obj_set_style_anim_duration(wifi_kb, 0, LV_PART_ITEMS);
-    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS);
-    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
-    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
-    lv_obj_set_style_bg_color(wifi_kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_text_color(wifi_kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_transform_width(wifi_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_transform_height(wifi_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    disable_kb_animations(wifi_kb);
     lv_obj_add_event_cb(wifi_kb, wifi_event_cb, LV_EVENT_ALL, NULL);
 
     // Buttons

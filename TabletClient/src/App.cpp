@@ -1731,7 +1731,7 @@ void build_tablet_ui() {
   lv_obj_set_scroll_dir(reader_body, LV_DIR_VER);
   lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(reader_body, hide_bottombar_cb, LV_EVENT_CLICKED, NULL);
-  lv_obj_set_size(reader_body, 480, 710); // Leave 60px for the bottombar to prevent overlapping
+  lv_obj_set_size(reader_body, 480, 760); // 800 - 30 (status bar) - 10 (breathing room)
   lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 30);
   lv_obj_set_style_bg_color(reader_body, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(reader_body, LV_OPA_COVER, 0);

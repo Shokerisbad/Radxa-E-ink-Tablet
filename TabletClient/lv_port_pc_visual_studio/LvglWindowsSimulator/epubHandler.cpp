@@ -200,7 +200,12 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
 
 
 void EpubHandler::paginateText(const std::string &text, int chars_per_line, int line_height) {
-  const int SCREEN_MAX_HEIGHT = 700; // Margin to prevent text cutoff inside the 710px reader_body
+  // The reader_body is 760px tall, starting at y=30.
+  // We need a dynamic safety margin that grows with font size because larger
+  // fonts have more variance between estimated and actual LVGL line wrapping.
+  // At 14pt (line_height=16) the margin is ~10px, at 26pt (line_height=32) it's ~42px.
+  const int SAFETY_MARGIN = 10 + line_height;
+  const int SCREEN_MAX_HEIGHT = 760 - SAFETY_MARGIN;
   
   m_pages.clear();
   m_pageOffsets.clear();
@@ -215,6 +220,21 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
   int current_page_idx = 0;
   
   for (auto& ch : m_toc) ch.page_number = -1;
+
+  // Helper: count Unicode characters instead of bytes for more accurate wrapping
+  auto utf8_char_count = [](const std::string& s) -> int {
+      int count = 0;
+      for (size_t i = 0; i < s.length(); ) {
+          unsigned char c = (unsigned char)s[i];
+          if (c < 0x80) i += 1;
+          else if ((c & 0xE0) == 0xC0) i += 2;
+          else if ((c & 0xF0) == 0xE0) i += 3;
+          else if ((c & 0xF8) == 0xF0) i += 4;
+          else i += 1; // invalid byte, skip
+          count++;
+      }
+      return count;
+  };
 
   while (std::getline(stream, line, '\n')) {
     // Check TOC and force page break for new chapter
@@ -259,10 +279,11 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
       continue;
     }
 
-    // Estimate wrapped lines
-    size_t line_len = line.length();
-    int wrapped_lines = (static_cast<int>(line_len) / chars_per_line) + 1;
-    if (line_len == 0)
+    // Estimate wrapped lines using Unicode character count (not bytes)
+    // for better accuracy with UTF-8 text and proportional fonts
+    int char_count = utf8_char_count(line);
+    int wrapped_lines = (char_count / chars_per_line) + 1;
+    if (char_count == 0)
       wrapped_lines = 1; // Empty lines still take up height
 
     int added_height = wrapped_lines * line_height;

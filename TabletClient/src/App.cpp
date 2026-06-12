@@ -244,6 +244,10 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_set_style_shadow_width(btn, 0, LV_STATE_PRESSED);
     lv_obj_set_style_anim_duration(btn, 0, 0); // Disable state transition animations
+    lv_obj_set_style_transition(btn, &no_trans_dsc, 0);
+    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_PRESSED);
+    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_FOCUSED);
+    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_FOCUS_KEY);
     lv_obj_remove_flag(btn, LV_OBJ_FLAG_PRESS_LOCK);
     return btn;
 }
@@ -303,6 +307,10 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
   lv_obj_set_style_translate_y(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_shadow_width(row, 0, LV_STATE_PRESSED);
   lv_obj_set_style_anim_duration(row, 0, 0);
+  lv_obj_set_style_transition(row, &no_trans_dsc, 0);
+  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_PRESSED);
+  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_FOCUSED);
+  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_FOCUS_KEY);
   lv_obj_remove_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
 
   return row;
@@ -1045,6 +1053,10 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_obj_t *kb = lv_keyboard_create(modal);
   lv_keyboard_set_popovers(kb, false);
   lv_obj_set_style_anim_duration(kb, 0, LV_PART_ITEMS);
+  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS);
+  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
+  lv_obj_set_style_transition(kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
   lv_obj_set_style_bg_color(kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_text_color(kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_transform_width(kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -1198,7 +1210,19 @@ static void fetch_dict_bg(std::string word) {
     std::thread([word]() {
         DictPayload *p = new DictPayload{word, "", false};
         
-        std::string cmd = "curl -s \"https://api.dictionaryapi.dev/api/v2/entries/en/" + word + "\"";
+        // Strip non-alpha characters from word just in case
+        std::string clean_word;
+        for (char c : word) {
+            if (isalpha(c)) clean_word += c;
+        }
+        
+        if (clean_word.empty()) {
+            p->definition = "Invalid word selection.";
+            lv_async_call(render_dict_async_cb, p);
+            return;
+        }
+
+        std::string cmd = "curl -k -L -s \"https://api.dictionaryapi.dev/api/v2/entries/en/" + clean_word + "\" 2>&1";
         FILE* fp = popen(cmd.c_str(), "r");
         if (fp) {
             char buffer[512];
@@ -1208,34 +1232,65 @@ static void fetch_dict_bg(std::string word) {
             }
             pclose(fp);
             
-            try {
-                json j = json::parse(response);
-                if (j.is_array() && j.size() > 0) {
-                    auto meanings = j[0]["meanings"];
-                    if (meanings.is_array() && meanings.size() > 0) {
-                        auto defs = meanings[0]["definitions"];
-                        if (defs.is_array() && defs.size() > 0) {
-                            p->definition = defs[0]["definition"].get<std::string>();
-                            p->success = true;
+            if (response.empty()) {
+                p->definition = "Network error: Empty response. Are you connected to Wi-Fi?";
+            } else {
+                try {
+                    json j = json::parse(response);
+                    if (j.is_array() && j.size() > 0) {
+                        auto meanings = j[0]["meanings"];
+                        if (meanings.is_array() && meanings.size() > 0) {
+                            auto defs = meanings[0]["definitions"];
+                            if (defs.is_array() && defs.size() > 0) {
+                                p->definition = defs[0]["definition"].get<std::string>();
+                                p->success = true;
+                            }
                         }
+                    } else if (j.is_object() && j.contains("title")) {
+                        p->definition = j["title"].get<std::string>();
+                    } else {
+                        p->definition = "Parse error or no definition found.";
                     }
+                } catch (...) {
+                    // Not JSON, probably a curl error message
+                    p->definition = "Fetch error: " + response.substr(0, 50);
                 }
-            } catch (...) {}
+            }
+        } else {
+            p->definition = "System error: Failed to run curl.";
         }
         
         lv_async_call(render_dict_async_cb, p);
     }).detach();
 }
 
+static uint32_t dict_press_time = 0;
+static lv_point_t dict_press_point = {0,0};
+
 static void reader_label_clicked_cb(lv_event_t * e) {
     if (!reader_content_label) return;
     
+    lv_event_code_t code = lv_event_get_code(e);
     lv_indev_t * indev = lv_indev_active();
     if (!indev) return;
     
-    lv_point_t p;
-    lv_indev_get_point(indev, &p);
+    if (code == LV_EVENT_PRESSED) {
+        dict_press_time = lv_tick_get();
+        lv_indev_get_point(indev, &dict_press_point);
+        return;
+    }
     
+    if (code != LV_EVENT_RELEASED) return;
+    
+    lv_point_t release_point;
+    lv_indev_get_point(indev, &release_point);
+    
+    // Check if held for > 500ms and didn't move more than 25 pixels
+    if (lv_tick_elaps(dict_press_time) < 500) return;
+    if (abs(release_point.x - dict_press_point.x) > 25 || 
+        abs(release_point.y - dict_press_point.y) > 25) return;
+        
+    lv_point_t p = release_point;
     lv_area_t coords;
     lv_obj_get_coords(reader_content_label, &coords);
     p.x -= coords.x1;
@@ -1539,7 +1594,7 @@ void build_tablet_ui() {
   lv_label_set_text(reader_content_label, "Select a book from the library to begin reading.");
   apply_typography();
   lv_obj_add_flag(reader_content_label, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(reader_content_label, reader_label_clicked_cb, LV_EVENT_LONG_PRESSED, NULL);
+  lv_obj_add_event_cb(reader_content_label, reader_label_clicked_cb, LV_EVENT_ALL, NULL);
 
   // Top Toolbar container (Transparent tap zone)
   lv_obj_t* reader_top_tapzone = create_white_container(screen_book_reader);
@@ -1756,8 +1811,10 @@ void build_tablet_ui() {
   lv_obj_t *ai_kb = lv_keyboard_create(screen_ai);
   lv_keyboard_set_popovers(ai_kb, false);
   lv_obj_set_style_anim_duration(ai_kb, 0, LV_PART_ITEMS);
-  lv_obj_set_style_transition(ai_kb, NULL, LV_PART_ITEMS);
-  lv_obj_set_style_transition(ai_kb, NULL, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS);
+  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
+  lv_obj_set_style_transition(ai_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
   lv_obj_set_style_bg_color(ai_kb, lv_color_hex(0xFFFFFF), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_text_color(ai_kb, lv_color_hex(0x000000), LV_PART_ITEMS | LV_STATE_PRESSED);
   lv_obj_set_style_transform_width(ai_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -2086,6 +2143,7 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     lv_label_set_text_fmt(title, "Connect to:\n%s", target_ssid.c_str());
 
     wifi_pwd_ta = lv_textarea_create(wifi_pwd_modal);
+    lv_textarea_set_one_line(wifi_pwd_ta, true);
     lv_textarea_set_password_mode(wifi_pwd_ta, true);
     lv_textarea_set_placeholder_text(wifi_pwd_ta, "Password");
     lv_obj_set_width(wifi_pwd_ta, LV_PCT(90));
@@ -2095,17 +2153,36 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     lv_obj_set_style_anim_duration(wifi_pwd_ta, 0, LV_PART_CURSOR);
     lv_obj_set_style_opa(wifi_pwd_ta, 0, LV_PART_CURSOR);
 
+    auto wifi_event_cb = [](lv_event_t *e) {
+        lv_event_code_t code = lv_event_get_code(e);
+        if(code == LV_EVENT_READY) {
+            wifi_connect_cb(e);
+        } else if(code == LV_EVENT_CANCEL) {
+            if(wifi_pwd_modal) {
+                lv_obj_del(wifi_pwd_modal);
+                wifi_pwd_modal = nullptr;
+                wifi_kb = nullptr;
+                wifi_pwd_ta = nullptr;
+            }
+        }
+    };
+    lv_obj_add_event_cb(wifi_pwd_ta, wifi_event_cb, LV_EVENT_ALL, NULL);
+
     // Keyboard
     wifi_kb = lv_keyboard_create(wifi_pwd_modal);
     lv_keyboard_set_textarea(wifi_kb, wifi_pwd_ta);
+    lv_keyboard_set_popovers(wifi_kb, false);
     // Disable pressed animation on keyboard buttons for E-ink
     lv_obj_set_style_anim_duration(wifi_kb, 0, LV_PART_ITEMS);
     lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS);
     lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUSED);
+    lv_obj_set_style_transition(wifi_kb, &no_trans_dsc, LV_PART_ITEMS | LV_STATE_FOCUS_KEY);
     lv_obj_set_style_bg_color(wifi_kb, lv_color_white(), LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_text_color(wifi_kb, lv_color_black(), LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_transform_width(wifi_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_transform_height(wifi_kb, 0, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_add_event_cb(wifi_kb, wifi_event_cb, LV_EVENT_ALL, NULL);
 
     // Buttons
     lv_obj_t * btn_row = create_white_container(wifi_pwd_modal);

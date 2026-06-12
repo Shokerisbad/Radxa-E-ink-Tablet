@@ -239,6 +239,13 @@ static lv_obj_t * create_styled_btn(lv_obj_t * parent) {
     lv_obj_set_style_border_width(btn, 2, 0);
     lv_obj_set_style_radius(btn, 5, 0);
     lv_obj_set_style_pad_all(btn, 15, 0); // Need to manually add padding now
+
+    // Explicitly disable animations and styling for pressed state
+    lv_obj_set_style_transition(btn, &no_trans_dsc, 0);
+    lv_obj_set_style_transition(btn, &no_trans_dsc, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(btn, lv_color_hex(0x000000), LV_STATE_PRESSED);
+
     return btn;
 }
 
@@ -293,6 +300,12 @@ static lv_obj_t* create_menu_row(lv_obj_t* parent, const char* icon, const char*
   lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
   lv_obj_set_style_text_color(row, lv_color_hex(0x000000), 0); // Force black text
+  
+  // Explicitly disable animations and styling for pressed state
+  lv_obj_set_style_transition(row, &no_trans_dsc, 0);
+  lv_obj_set_style_transition(row, &no_trans_dsc, LV_STATE_PRESSED);
+  lv_obj_set_style_bg_color(row, lv_color_hex(0xFFFFFF), LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(row, lv_color_hex(0x000000), LV_STATE_PRESSED);
   
   // Only bottom border to act as a separator
   lv_obj_set_style_border_width(row, 0, 0);
@@ -1718,7 +1731,7 @@ void build_tablet_ui() {
   lv_obj_set_scroll_dir(reader_body, LV_DIR_VER);
   lv_obj_add_event_cb(reader_body, global_gesture_cb, LV_EVENT_GESTURE, NULL);
   lv_obj_add_event_cb(reader_body, hide_bottombar_cb, LV_EVENT_CLICKED, NULL);
-  lv_obj_set_size(reader_body, 480, 770); // Full height below the 30px status bar
+  lv_obj_set_size(reader_body, 480, 710); // Leave 60px for the bottombar to prevent overlapping
   lv_obj_align(reader_body, LV_ALIGN_TOP_MID, 0, 30);
   lv_obj_set_style_bg_color(reader_body, lv_color_hex(0xFFFFFF), 0);
   lv_obj_set_style_bg_opa(reader_body, LV_OPA_COVER, 0);

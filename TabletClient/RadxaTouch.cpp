@@ -218,10 +218,14 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
             // CRITICAL: Clear the status buffer so GT911 registers the next touch
             g_touch_instance->write_reg(0x814E, 0x00);
         } else {
-            // No touch event pending
-            g_touch_instance->is_pressed = false;
+            // No new touch data pending.
+            // Do NOT reset is_pressed to false here! 
+            // If the finger is still held down, GT911 might not have a new event ready 
+            // at the exact moment LVGL polls. Preserving the previous state prevents 
+            // false releases that cause double-clicks and interrupt long-presses.
         }
     } else {
+        // I2C read failed, safer to assume release to prevent stuck touches
         g_touch_instance->is_pressed = false;
     }
 

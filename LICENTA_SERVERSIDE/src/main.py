@@ -97,31 +97,40 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
         print("[Warning] No candidates found! Did the vector database build correctly?")
         return []
         
-    # 3. Hybrid Semantic-Popularity Sort
-    # We prioritize the exact semantic match (L2 Distance: lower is better) but apply a distance reduction bonus 
-    # to highly rated books and a distance penalty to low rated books, using a Bayesian Average.
-    if 'average_rating' in candidates_df.columns and 'similarity_score' in candidates_df.columns and 'ratings_count' in candidates_df.columns:
-        candidates_df['average_rating'] = pd.to_numeric(candidates_df['average_rating'], errors='coerce').fillna(0.0)
-        candidates_df['ratings_count'] = pd.to_numeric(candidates_df['ratings_count'], errors='coerce').fillna(0)
-        
-        # Bayesian Average: C = 3.8 (dataset mean rating), m = 1000 (min votes to be confident)
-        C = 3.8
-        m = 1000.0
-        
-        v = candidates_df['ratings_count']
-        R = candidates_df['average_rating']
-        
-        bayesian_rating = (v / (v + m)) * R + (m / (v + m)) * C
-        
-        # Mean-Centered Penalty: Center the rating around 3.8
-        centered_rating = bayesian_rating - C
-        
-        # A positive centered_rating (good book) reduces distance (makes it better).
-        # A negative centered_rating (bad book) increases distance (penalizes it).
-        candidates_df['hybrid_score'] = candidates_df['similarity_score'] - (centered_rating / 1.2) * 0.15
-        
-        candidates_df = candidates_df.sort_values(by='hybrid_score', ascending=True)
-        
+    # 3. Hybrid Semantic-Popularity Sort / Chronological Search Sort
+    if exact_match:
+        # Bypass Bayesian Math and Chroma for Exact Matches.
+        # Prioritize books where the search term is directly in the title, then sort chronologically!
+        print("[Engine] Bypassing Semantic Ranking to preserve chronological series order.")
+        safe_query_lower = user_profile.replace('"', '').lower()
+        candidates_df['title_match'] = candidates_df['title'].str.lower().str.contains(safe_query_lower, na=False)
+        candidates_df['publication_year'] = pd.to_numeric(candidates_df['publication_year'], errors='coerce').fillna(9999)
+        candidates_df = candidates_df.sort_values(by=['title_match', 'publication_year'], ascending=[False, True])
+    else:
+        # We prioritize the exact semantic match (L2 Distance: lower is better) but apply a distance reduction bonus 
+        # to highly rated books and a distance penalty to low rated books, using a Bayesian Average.
+        if 'average_rating' in candidates_df.columns and 'similarity_score' in candidates_df.columns and 'ratings_count' in candidates_df.columns:
+            candidates_df['average_rating'] = pd.to_numeric(candidates_df['average_rating'], errors='coerce').fillna(0.0)
+            candidates_df['ratings_count'] = pd.to_numeric(candidates_df['ratings_count'], errors='coerce').fillna(0)
+            
+            # Bayesian Average: C = 3.8 (dataset mean rating), m = 1000 (min votes to be confident)
+            C = 3.8
+            m = 1000.0
+            
+            v = candidates_df['ratings_count']
+            R = candidates_df['average_rating']
+            
+            bayesian_rating = (v / (v + m)) * R + (m / (v + m)) * C
+            
+            # Mean-Centered Penalty: Center the rating around 3.8
+            centered_rating = bayesian_rating - C
+            
+            # A positive centered_rating (good book) reduces distance (makes it better).
+            # A negative centered_rating (bad book) increases distance (penalizes it).
+            candidates_df['hybrid_score'] = candidates_df['similarity_score'] - (centered_rating / 1.2) * 0.15
+            
+            candidates_df = candidates_df.sort_values(by='hybrid_score', ascending=True)
+
     # 4. Deduplication
     # Goodreads contains hundreds of duplicate entries for the exact same book (Hardcover, Kindle, Audiobook, Translations).
     # We strip out trailing series text like '(Metro #1)' to aggressively deduplicate them.
@@ -135,14 +144,31 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
     print(final_candidates[['title', 'similarity_score', 'average_rating']].to_string(index=False).encode('utf-8', 'ignore').decode('utf-8'))
     
     # 5. LLM Reranking (Semantic Context)
-    from src.recommender.llm_reranker import LLMReranker
-    reranker = LLMReranker()
-    try:
-        reranked_results = reranker.rerank(user_profile, final_candidates, finished_books)
-        return reranked_results
-    except Exception as e:
-        print(f"[LLM Warning] Reranker failed ({e}), falling back to standard results.")
-        return final_candidates.to_dict('records')
+    if exact_match:
+        # Bypass LLM for instant search results
+        print("[Engine] Bypassing LLM Reranker for instant Search results.")
+        final_results = []
+        for _, row in final_candidates.iterrows():
+            r = row.to_dict()
+            r['id'] = str(r.get('id', r.get('book_id', '')))
+            r['reasoning'] = "" # Skip LLM generation
+            
+            img_val = r.get('image_url', '')
+            if pd.isna(img_val) or str(img_val).strip().lower() in ['nan', 'none']:
+                r['image_url'] = ''
+            else:
+                r['image_url'] = str(img_val)
+            final_results.append(r)
+        return final_results
+    else:
+        from src.recommender.llm_reranker import LLMReranker
+        reranker = LLMReranker()
+        try:
+            reranked_results = reranker.rerank(user_profile, final_candidates, finished_books)
+            return reranked_results
+        except Exception as e:
+            print(f"[LLM Warning] Reranker failed ({e}), falling back to standard results.")
+            return final_candidates.to_dict('records')
 
 if __name__ == "__main__":
     print("\n================================================")

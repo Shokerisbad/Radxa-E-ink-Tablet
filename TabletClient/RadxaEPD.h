@@ -25,6 +25,9 @@ public:
     // Full screen refresh
     void refresh_full(const uint8_t *buffer);
 
+    // Forces the next refresh to be a full hardware refresh
+    void force_full_refresh();
+
     // System Status Checkers
     static int get_battery_percentage();
     static bool is_wifi_connected();

@@ -124,7 +124,7 @@ def recommend(user_profile: str, generator: CandidateGenerator, session_history:
     from src.recommender.llm_reranker import LLMReranker
     reranker = LLMReranker()
     try:
-        reranked_results = reranker.rerank(user_profile, final_candidates)
+        reranked_results = reranker.rerank(user_profile, final_candidates, finished_books)
         return reranked_results
     except Exception as e:
         print(f"[LLM Warning] Reranker failed ({e}), falling back to standard results.")

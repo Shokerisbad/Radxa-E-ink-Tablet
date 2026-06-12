@@ -232,6 +232,10 @@ void RadxaEPD::wake() {
   init_display_sequence();
 }
 
+void RadxaEPD::force_full_refresh() {
+  first_refresh = true;
+}
+
 void RadxaEPD::refresh_full(const uint8_t *buffer) {
   const size_t frame_bytes = (800 * 480) / 8; // 48000 bytes
 

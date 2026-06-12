@@ -87,6 +87,19 @@ void create_status_bar() {
     lv_label_set_text_fmt(time_label, "%02d:%02d", tm_init.tm_hour, tm_init.tm_min);
     lv_obj_align(time_label, LV_ALIGN_CENTER, 0, 0);
 
+    // Refresh Icon
+    lv_obj_t * refresh_label = lv_label_create(status_bar);
+    lv_label_set_text(refresh_label, LV_SYMBOL_REFRESH);
+    lv_obj_align_to(refresh_label, batt_label, LV_ALIGN_OUT_LEFT_MID, -15, 0);
+    lv_obj_add_flag(refresh_label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_style(refresh_label, NULL, LV_STATE_PRESSED); // no animation
+    lv_obj_add_event_cb(refresh_label, [](lv_event_t *e) {
+        if(g_epd_instance) {
+            g_epd_instance->force_full_refresh();
+            lv_obj_invalidate(lv_scr_act());
+        }
+    }, LV_EVENT_CLICKED, NULL);
+
     // Expose labels for manual updates
     extern void init_status_bar_labels(lv_obj_t* w, lv_obj_t* v, lv_obj_t* b, lv_obj_t* t);
     init_status_bar_labels(wifi_label, vpn_label, batt_label, time_label);

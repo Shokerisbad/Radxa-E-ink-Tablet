@@ -331,6 +331,10 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
       partial_refresh_count = 0;
   }
 
+  if (g_touch_instance) {
+      g_touch_instance->ignore_touches_for(is_full ? 1200 : 500);
+  }
+
   if (is_full) {
     g_epd_instance->first_refresh = false;
 

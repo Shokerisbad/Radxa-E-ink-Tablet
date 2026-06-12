@@ -1263,6 +1263,76 @@ static void fetch_dict_bg(std::string word) {
     }).detach();
 }
 
+static std::string clean_word(const std::string& raw) {
+    if (raw.empty()) return "";
+    
+    auto is_strip_char = [](unsigned char c) {
+        if (c <= 127) {
+            return !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'));
+        }
+        return false;
+    };
+    
+    struct Utf8Char {
+        size_t byte_pos;
+        size_t byte_len;
+        std::string str;
+    };
+    std::vector<Utf8Char> chars;
+    size_t i = 0;
+    while (i < raw.length()) {
+        size_t len = 1;
+        if ((raw[i] & 0xE0) == 0xC0) len = 2;
+        else if ((raw[i] & 0xF0) == 0xE0) len = 3;
+        else if ((raw[i] & 0xF8) == 0xF0) len = 4;
+        if (i + len > raw.length()) len = raw.length() - i;
+        chars.push_back({i, len, raw.substr(i, len)});
+        i += len;
+    }
+    
+    if (chars.empty()) return "";
+    
+    size_t start = 0;
+    while (start < chars.size()) {
+        const auto& c = chars[start];
+        bool should_strip = false;
+        if (c.byte_len == 1) {
+            should_strip = is_strip_char((unsigned char)c.str[0]);
+        } else if (c.byte_len == 3 && (unsigned char)c.str[0] == 0xE2 && (unsigned char)c.str[1] == 0x80) {
+            unsigned char b2 = (unsigned char)c.str[2];
+            if (b2 == 0x9C || b2 == 0x9D || b2 == 0x98 || b2 == 0x99 || b2 == 0x93 || b2 == 0x94) {
+                should_strip = true;
+            }
+        }
+        if (!should_strip) break;
+        start++;
+    }
+    
+    size_t end = chars.size();
+    while (end > start) {
+        const auto& c = chars[end - 1];
+        bool should_strip = false;
+        if (c.byte_len == 1) {
+            should_strip = is_strip_char((unsigned char)c.str[0]);
+        } else if (c.byte_len == 3 && (unsigned char)c.str[0] == 0xE2 && (unsigned char)c.str[1] == 0x80) {
+            unsigned char b2 = (unsigned char)c.str[2];
+            if (b2 == 0x9C || b2 == 0x9D || b2 == 0x98 || b2 == 0x99 || b2 == 0x93 || b2 == 0x94) {
+                should_strip = true;
+            }
+        }
+        if (!should_strip) break;
+        end--;
+    }
+    
+    if (start >= end) return "";
+    
+    std::string cleaned;
+    for (size_t k = start; k < end; k++) {
+        cleaned += chars[k].str;
+    }
+    return cleaned;
+}
+
 static void reader_label_clicked_cb(lv_event_t * e) {
     if (!reader_content_label) return;
     
@@ -1280,41 +1350,122 @@ static void reader_label_clicked_cb(lv_event_t * e) {
     p.x -= coords.x1;
     p.y -= coords.y1;
     
-    uint32_t char_idx = lv_label_get_letter_on(reader_content_label, &p, false);
-    
     std::string text = lv_label_get_text(reader_content_label);
-    
-    // Convert LVGL's logical character index to an actual UTF-8 byte index
-    uint32_t byte_idx = 0;
-    uint32_t logical_count = 0;
-    while (byte_idx < text.length() && logical_count < char_idx) {
-        byte_idx++;
-        // Skip UTF-8 continuation bytes (binary 10xxxxxx)
-        while (byte_idx < text.length() && (text[byte_idx] & 0xC0) == 0x80) {
-            byte_idx++;
-        }
-        logical_count++;
-    }
-    if (byte_idx >= text.length()) return;
     
     auto is_boundary = [](char c) {
         return c == ' ' || c == '\n' || c == '\t' || c == '.' || c == ',' || 
                c == '!' || c == '?' || c == ';' || c == ':' || c == '"' || 
-               c == '\'' || c == '(' || c == ')';
+               c == '\'' || c == '(' || c == ')' || c == '[' || c == ']' ||
+               c == '{' || c == '}';
     };
+
+    // We will search in a 5x5 grid around the touch point.
+    // Prioritize center (0,0), then slightly above/below, then left/right.
+    const int num_dx = 5;
+    const int num_dy = 5;
+    int dx_offsets[num_dx] = {0, -6, 6, -12, 12};
+    int dy_offsets[num_dy] = {0, -6, 6, -12, 12};
     
-    int start_idx = byte_idx;
-    int end_idx = byte_idx;
+    std::string best_word;
+    int best_start_idx = -1;
+    int best_end_idx = -1;
     
-    while (start_idx > 0 && !is_boundary(text[start_idx - 1])) start_idx--;
-    while (end_idx < text.length() && !is_boundary(text[end_idx])) end_idx++;
+    int label_w = lv_area_get_width(&coords);
+    int label_h = lv_area_get_height(&coords);
+
+    for (int y_idx = 0; y_idx < num_dy; y_idx++) {
+        for (int x_idx = 0; x_idx < num_dx; x_idx++) {
+            lv_point_t test_p;
+            test_p.x = p.x + dx_offsets[x_idx];
+            test_p.y = p.y + dy_offsets[y_idx];
+            
+            // Clamp within label boundaries
+            if (test_p.x < 0) test_p.x = 0;
+            if (test_p.x > label_w) test_p.x = label_w;
+            if (test_p.y < 0) test_p.y = 0;
+            if (test_p.y > label_h) test_p.y = label_h;
+            
+            uint32_t char_idx = lv_label_get_letter_on(reader_content_label, &test_p, false);
+            
+            // Convert character index to byte index
+            uint32_t byte_idx = 0;
+            uint32_t logical_count = 0;
+            while (byte_idx < text.length() && logical_count < char_idx) {
+                byte_idx++;
+                while (byte_idx < text.length() && (text[byte_idx] & 0xC0) == 0x80) {
+                    byte_idx++;
+                }
+                logical_count++;
+            }
+            
+            if (byte_idx >= text.length()) continue;
+            
+            // If the character under touch is a boundary or whitespace, skip
+            if (is_boundary(text[byte_idx])) continue;
+            
+            // Expand to find the raw word boundaries
+            int start_idx = byte_idx;
+            int end_idx = byte_idx;
+            while (start_idx > 0 && !is_boundary(text[start_idx - 1])) start_idx--;
+            while (end_idx < text.length() && !is_boundary(text[end_idx])) end_idx++;
+            
+            if (start_idx < end_idx) {
+                std::string raw_word = text.substr(start_idx, end_idx - start_idx);
+                std::string cleaned = clean_word(raw_word);
+                if (!cleaned.empty() && cleaned.length() > 1) {
+                    // Match found! Highlight bounds should align to the cleaned word.
+                    size_t rel_pos = raw_word.find(cleaned);
+                    if (rel_pos != std::string::npos) {
+                        best_start_idx = start_idx + (int)rel_pos;
+                        best_end_idx = best_start_idx + (int)cleaned.length();
+                    } else {
+                        best_start_idx = start_idx;
+                        best_end_idx = end_idx;
+                    }
+                    best_word = cleaned;
+                    break;
+                }
+            }
+        }
+        if (!best_word.empty()) break;
+    }
     
-    if (start_idx >= end_idx) return;
+    // Fallback: If no word was found in the grid search, try exact coordinate extraction
+    if (best_word.empty()) {
+        uint32_t char_idx = lv_label_get_letter_on(reader_content_label, &p, false);
+        uint32_t byte_idx = 0;
+        uint32_t logical_count = 0;
+        while (byte_idx < text.length() && logical_count < char_idx) {
+            byte_idx++;
+            while (byte_idx < text.length() && (text[byte_idx] & 0xC0) == 0x80) {
+                byte_idx++;
+            }
+            logical_count++;
+        }
+        if (byte_idx >= text.length()) return;
+        
+        int start_idx = byte_idx;
+        int end_idx = byte_idx;
+        while (start_idx > 0 && !is_boundary(text[start_idx - 1])) start_idx--;
+        while (end_idx < text.length() && !is_boundary(text[end_idx])) end_idx++;
+        
+        if (start_idx >= end_idx) return;
+        std::string raw_word = text.substr(start_idx, end_idx - start_idx);
+        best_word = clean_word(raw_word);
+        if (best_word.empty()) return;
+        
+        size_t rel_pos = raw_word.find(best_word);
+        if (rel_pos != std::string::npos) {
+            best_start_idx = start_idx + (int)rel_pos;
+            best_end_idx = best_start_idx + (int)best_word.length();
+        } else {
+            best_start_idx = start_idx;
+            best_end_idx = end_idx;
+        }
+    }
     
-    std::string word = text.substr(start_idx, end_idx - start_idx);
-    
-    lv_label_set_text_selection_start(reader_content_label, start_idx);
-    lv_label_set_text_selection_end(reader_content_label, end_idx);
+    lv_label_set_text_selection_start(reader_content_label, best_start_idx);
+    lv_label_set_text_selection_end(reader_content_label, best_end_idx);
     
     if (dict_modal) {
         lv_obj_del(dict_modal);
@@ -1334,7 +1485,7 @@ static void reader_label_clicked_cb(lv_event_t * e) {
     lv_obj_set_style_border_width(header, 0, 0);
     
     lv_obj_t * title = lv_label_create(header);
-    std::string title_str = "Dictionary: " + word;
+    std::string title_str = "Dictionary: " + best_word;
     lv_label_set_text(title, title_str.c_str());
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 0, 0);
     
@@ -1349,7 +1500,7 @@ static void reader_label_clicked_cb(lv_event_t * e) {
     lv_obj_set_width(def_label, LV_PCT(100));
     lv_label_set_text(def_label, "Fetching definition...");
     
-    fetch_dict_bg(word);
+    fetch_dict_bg(best_word);
 }
 
 void build_tablet_ui() {

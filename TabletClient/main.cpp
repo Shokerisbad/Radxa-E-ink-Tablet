@@ -261,7 +261,7 @@ int main(void) {
         lv_indev_t * indev = lv_indev_create();
         lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
         lv_indev_set_read_cb(indev, RadxaTouch::read_cb);
-        lv_indev_set_gesture_min_velocity(indev, 0);
+
         std::cout << "Touch driver registered with LVGL." << std::endl;
     } else {
         std::cerr << "Warning: Touch driver failed to initialize. Continuing without touch." << std::endl;

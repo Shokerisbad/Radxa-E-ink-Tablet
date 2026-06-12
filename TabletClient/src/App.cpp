@@ -1079,7 +1079,7 @@ static void jump_btn_cb(lv_event_t *e) {
   lv_textarea_set_one_line(ta, true);
   lv_textarea_set_accepted_chars(ta, "0123456789");
   lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, 40);
-  lv_obj_set_style_anim_duration(ta, 0, LV_PART_CURSOR);
+  lv_obj_set_style_anim_duration(ta, 1000000, LV_PART_CURSOR);
   lv_obj_set_style_opa(ta, 0, LV_PART_CURSOR);
 
   lv_obj_t *kb = lv_keyboard_create(modal);
@@ -1907,7 +1907,7 @@ void build_tablet_ui() {
   lv_obj_set_style_text_color(ai_input_ta, lv_color_hex(0x000000), LV_PART_MAIN);
 
   // Disable blinking cursor to prevent infinite e-ink refresh loops!
-  lv_obj_set_style_anim_duration(ai_input_ta, 0, LV_PART_CURSOR);
+  lv_obj_set_style_anim_duration(ai_input_ta, 1000000, LV_PART_CURSOR);
   lv_obj_set_style_opa(ai_input_ta, 0, LV_PART_CURSOR);
 
   lv_obj_t *ai_send_btn = create_styled_btn(ai_input_bar);
@@ -2314,7 +2314,7 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     lv_obj_set_style_border_width(wifi_pwd_ta, 2, LV_PART_MAIN);
     lv_obj_set_style_border_color(wifi_pwd_ta, lv_color_black(), LV_PART_MAIN);
     // Disable blinking cursor to prevent infinite e-ink refresh loops!
-    lv_obj_set_style_anim_duration(wifi_pwd_ta, 0, LV_PART_CURSOR);
+    lv_obj_set_style_anim_duration(wifi_pwd_ta, 1000000, LV_PART_CURSOR);
     lv_obj_set_style_opa(wifi_pwd_ta, 0, LV_PART_CURSOR);
 
     auto wifi_event_cb = [](lv_event_t *e) {

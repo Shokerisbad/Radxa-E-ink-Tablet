@@ -200,7 +200,7 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
 
 
 void EpubHandler::paginateText(const std::string &text, int chars_per_line, int line_height) {
-  const int SCREEN_MAX_HEIGHT = 710; // Max height for reader_body is 770, leave 60px pad for bottom page counter
+  const int SCREEN_MAX_HEIGHT = 700; // Margin to prevent text cutoff inside the 710px reader_body
   
   m_pages.clear();
   m_pageOffsets.clear();

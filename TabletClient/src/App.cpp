@@ -2437,6 +2437,41 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
 
     if(target_ssid.empty()) return;
 
+    // Check if the network is already known/saved
+    bool known = false;
+#ifndef _WIN32
+    FILE* fp = popen("nmcli -t -f NAME connection show", "r");
+    if(fp) {
+        char buffer[256];
+        while(fgets(buffer, sizeof(buffer), fp) != nullptr) {
+            std::string line(buffer);
+            if(!line.empty() && line.back() == '\n') line.pop_back();
+            if(line == target_ssid) {
+                known = true;
+                break;
+            }
+        }
+        pclose(fp);
+    }
+#else
+    if (target_ssid == "Simulated_Network_1") known = true;
+#endif
+
+    if (known) {
+        // Connect directly without prompting for password
+#ifndef _WIN32
+        std::string cmd = "nmcli connection up \"" + target_ssid + "\"";
+        system(cmd.c_str());
+#else
+        std::cout << "MOCK CONNECT KNOWN NETWORK to: " << target_ssid << std::endl;
+#endif
+        if (wifi_list_modal) {
+            lv_obj_del(wifi_list_modal);
+            wifi_list_modal = nullptr;
+        }
+        return;
+    }
+
     // Close any existing pwd modal
     if (wifi_pwd_modal) {
         lv_obj_del(wifi_pwd_modal);

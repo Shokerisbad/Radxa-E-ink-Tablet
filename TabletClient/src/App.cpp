@@ -28,6 +28,7 @@ void update_status_bar() {}
 #include "pdfHandler.h"
 #include <httplib.h>
 #include <json.hpp>
+#include <iomanip>
 
 #include <chrono>
 #include <filesystem>
@@ -182,6 +183,8 @@ static void save_reading_state() {
 struct BookMetadata {
     std::string title;
     std::string author;
+    std::string genre;
+    std::string summary;
     uint64_t mtime;
 };
 std::map<std::string, BookMetadata> g_book_metadata;
@@ -197,6 +200,8 @@ static void load_metadata_cache() {
                 g_book_metadata[key] = {
                     val.value("title", ""),
                     val.value("author", ""),
+                    val.value("genre", ""),
+                    val.value("summary", ""),
                     val.value("mtime", 0ULL)
                 };
             }
@@ -213,6 +218,8 @@ static void save_metadata_cache() {
             j[key] = {
                 {"title", val.title},
                 {"author", val.author},
+                {"genre", val.genre},
+                {"summary", val.summary},
                 {"mtime", val.mtime}
             };
         }
@@ -225,7 +232,8 @@ std::vector<FinishedBook> locally_finished_books;
 
 enum SortMode {
     SORT_BY_TITLE,
-    SORT_BY_AUTHOR
+    SORT_BY_AUTHOR,
+    SORT_BY_GENRE
 };
 
 // --- STYLED BUTTON HELPER ---
@@ -431,50 +439,100 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
                         LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   // Storing data for the callbacks
-  struct RatingData {
+  struct RatingState {
     std::string title;
     int pages;
-    int rating;
+    int current_rating;
     lv_obj_t *modal_ptr;
+    lv_obj_t *star_btns[5];
+    lv_obj_t *star_labels[5];
   };
 
-  for (int i = 1; i <= 5; ++i) {
-    lv_obj_t *btn = create_styled_btn(btn_container);
-    lv_obj_t *btn_lbl = lv_label_create(btn);
-    lv_label_set_text_fmt(btn_lbl, "%d*", i);
+  RatingState *rstate = new RatingState{book_title, total_pages, 0, modal, {nullptr}, {nullptr}};
 
-    RatingData *rdata = new RatingData{book_title, total_pages, i, modal};
+  // Attach a delete callback to the modal to clean up rstate when modal is destroyed
+  lv_obj_add_event_cb(
+      modal,
+      [](lv_event_t *e) {
+        RatingState *state = (RatingState *)lv_event_get_user_data(e);
+        if (state) delete state;
+      },
+      LV_EVENT_DELETE, rstate);
+
+  for (int i = 0; i < 5; ++i) {
+    lv_obj_t *btn = create_styled_btn(btn_container);
+    lv_obj_set_style_pad_all(btn, 10, 0); // bigger touch area
+    lv_obj_t *btn_lbl = lv_label_create(btn);
+    lv_label_set_text(btn_lbl, "\xE2\x98\x86"); // hollow star
+    rstate->star_btns[i] = btn;
+    rstate->star_labels[i] = btn_lbl;
 
     lv_obj_add_event_cb(
         btn,
         [](lv_event_t *e) {
-          RatingData *data = (RatingData *)lv_event_get_user_data(e);
-          locally_finished_books.push_back(
-              {data->title, data->pages, data->rating});
-          std::cout << "Stored finished book: " << data->title
-                    << " with rating: " << data->rating << std::endl;
-
-          lv_obj_del(data->modal_ptr);
-
-          // Auto prompt AI
-          std::string prompt =
-              "I just finished " + data->title + " and gave it a " +
-              std::to_string(data->rating) +
-              "/5 star rating. Please recommend something else.";
-          request_ai_recommendation(prompt);
-
-          delete data;
+          RatingState *state = (RatingState *)lv_event_get_user_data(e);
+          lv_obj_t *clicked_btn = lv_event_get_current_target(e);
+          int rating = 0;
+          for (int j = 0; j < 5; ++j) {
+            if (state->star_btns[j] == clicked_btn) {
+               rating = j + 1;
+               break;
+            }
+          }
+          state->current_rating = rating;
+          for (int j = 0; j < 5; ++j) {
+             if (j < rating) {
+                 lv_label_set_text(state->star_labels[j], "\xE2\x98\x85"); // solid
+             } else {
+                 lv_label_set_text(state->star_labels[j], "\xE2\x98\x86"); // hollow
+             }
+          }
         },
-        LV_EVENT_CLICKED, rdata);
+        LV_EVENT_CLICKED, rstate);
   }
 
-  lv_obj_t *close_btn = create_styled_btn(modal);
+  lv_obj_t *action_container = create_white_container(modal);
+  lv_obj_set_size(action_container, LV_PCT(100), LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_opa(action_container, 0, 0);
+  lv_obj_set_style_border_width(action_container, 0, 0);
+  lv_obj_set_flex_flow(action_container, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(action_container, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *submit_btn = create_styled_btn(action_container);
+  lv_obj_t *submit_lbl = lv_label_create(submit_btn);
+  lv_label_set_text(submit_lbl, "Submit");
+  lv_obj_add_event_cb(
+      submit_btn,
+      [](lv_event_t *e) {
+          RatingState *state = (RatingState *)lv_event_get_user_data(e);
+          if (state->current_rating > 0) {
+              locally_finished_books.push_back(
+                  {state->title, state->pages, state->current_rating});
+              std::cout << "Stored finished book: " << state->title
+                        << " with rating: " << state->current_rating << std::endl;
+
+              // Auto prompt AI
+              std::string prompt =
+                  "I just finished " + state->title + " and gave it a " +
+                  std::to_string(state->current_rating) +
+                  "/5 star rating. Please recommend something else.";
+              request_ai_recommendation(prompt);
+
+              lv_obj_del(state->modal_ptr);
+          }
+      },
+      LV_EVENT_CLICKED, rstate);
+
+  lv_obj_t *close_btn = create_styled_btn(action_container);
   lv_obj_t *close_lbl = lv_label_create(close_btn);
   lv_label_set_text(close_lbl, "No Thanks");
   lv_obj_add_event_cb(
       close_btn,
-      [](lv_event_t *e) { lv_obj_del((lv_obj_t *)lv_event_get_user_data(e)); },
-      LV_EVENT_CLICKED, modal);
+      [](lv_event_t *e) { 
+         RatingState *state = (RatingState *)lv_event_get_user_data(e);
+         lv_obj_del(state->modal_ptr); 
+      },
+      LV_EVENT_CLICKED, rstate);
 }
 
 static void update_reader_ui() {
@@ -885,6 +943,62 @@ static void book_clicked_cb(lv_event_t *e) {
 
 static SortMode g_current_sort = SORT_BY_TITLE;
 
+static std::string url_encode(const std::string &value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+    for (char c : value) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+        } else {
+            escaped << std::uppercase << '%' << std::setw(2) << int((unsigned char)c) << std::nouppercase;
+        }
+    }
+    return escaped.str();
+}
+
+static bool fetch_google_books_metadata(const std::string& title, const std::string& author, std::string& genre_out, std::string& summary_out) {
+    if (title.empty() && author.empty()) return false;
+    
+    std::string q = "";
+    if (!title.empty()) q += "intitle:" + title;
+    if (!author.empty()) {
+        if (!q.empty()) q += "+";
+        q += "inauthor:" + author;
+    }
+    
+    std::string cmd = "curl -k -L -s \"https://www.googleapis.com/books/v1/volumes?q=" + url_encode(q) + "\" 2>&1";
+    FILE* fp = popen(cmd.c_str(), "r");
+    if (!fp) return false;
+    
+    std::string response;
+    char buffer[512];
+    while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+        response += buffer;
+    }
+    pclose(fp);
+    
+    if (response.empty()) return false;
+    
+    try {
+        json j = json::parse(response);
+        if (j.contains("items") && j["items"].is_array() && j["items"].size() > 0) {
+            auto volumeInfo = j["items"][0]["volumeInfo"];
+            
+            if (volumeInfo.contains("categories") && volumeInfo["categories"].is_array() && volumeInfo["categories"].size() > 0) {
+                genre_out = volumeInfo["categories"][0].get<std::string>();
+            }
+            if (volumeInfo.contains("description")) {
+                summary_out = volumeInfo["description"].get<std::string>();
+            }
+            return true;
+        }
+    } catch (...) {
+        return false;
+    }
+    return false;
+}
+
 static void refresh_lib_cb(lv_event_t *e) { build_library_list(g_current_sort); }
 
 static void build_library_list(SortMode mode) {
@@ -921,10 +1035,10 @@ static void build_library_list(SortMode mode) {
         
         auto mtime = std::chrono::duration_cast<std::chrono::seconds>(entry.last_write_time().time_since_epoch()).count();
         if (g_book_metadata.find(p) == g_book_metadata.end() || g_book_metadata[p].mtime != (uint64_t)mtime) {
-            std::string t, a;
+            std::string t, a, g, s;
             bool ok = false;
-            if (ext == ".epub") ok = EpubHandler::getMetadata(p, t, a);
-            else ok = PdfHandler::getMetadata(p, t, a);
+            if (ext == ".epub") ok = EpubHandler::getMetadata(p, t, a, g, s);
+            else ok = PdfHandler::getMetadata(p, t, a, g, s);
             
             trim_string(t);
             trim_string(a);
@@ -937,7 +1051,18 @@ static void build_library_list(SortMode mode) {
             }
             if (a.empty()) a = "Unknown";
             
-            g_book_metadata[p] = {t, a, (uint64_t)mtime};
+            // Graceful Degradation: Fetch from Google Books if Wi-Fi is connected
+            if (RadxaEPD::is_wifi_connected()) {
+                std::string api_g, api_s;
+                if (fetch_google_books_metadata(t, a == "Unknown" ? "" : a, api_g, api_s)) {
+                    if (!api_g.empty()) g = api_g;
+                    if (!api_s.empty()) s = api_s;
+                }
+            }
+            if (g.empty()) g = "Unknown Genre";
+            if (s.empty()) s = "No summary available.";
+            
+            g_book_metadata[p] = {t, a, g, s, (uint64_t)mtime};
             cache_changed = true;
 
             std::string sanitized_t = t;
@@ -1008,6 +1133,12 @@ static void build_library_list(SortMode mode) {
               return g_book_metadata.at(a).title < g_book_metadata.at(b).title;
           return g_book_metadata.at(a).author < g_book_metadata.at(b).author;
       });
+  } else if (mode == SORT_BY_GENRE) {
+      std::sort(temp_files.begin(), temp_files.end(), [](const std::string& a, const std::string& b) {
+          if (g_book_metadata.at(a).genre == g_book_metadata.at(b).genre)
+              return g_book_metadata.at(a).title < g_book_metadata.at(b).title;
+          return g_book_metadata.at(a).genre < g_book_metadata.at(b).genre;
+      });
   }
 
   // Pre-allocate to prevent vector reallocation from invalidating c_str() pointers!
@@ -1049,6 +1180,13 @@ static void build_library_list(SortMode mode) {
       lv_label_set_text(lbl_author, author_str.c_str());
       lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_CLIP);
       lv_obj_set_width(lbl_author, 280);
+      
+      lv_obj_t *lbl_genre = lv_label_create(btn);
+      std::string genre_str = g_book_metadata[path_str].genre;
+      if (genre_str.empty()) genre_str = "Unknown Genre";
+      lv_label_set_text(lbl_genre, genre_str.c_str());
+      lv_label_set_long_mode(lbl_genre, LV_LABEL_LONG_CLIP);
+      lv_obj_set_width(lbl_genre, 280);
       // Removed gray text color because it causes thin letters ('l') to disappear on E-ink
 
       lv_obj_t *rate_btn = create_styled_btn(row);
@@ -1662,6 +1800,13 @@ void build_tablet_ui() {
   lv_obj_t* row_author = create_menu_row(list_cont, LV_SYMBOL_IMAGE, "Books by Author", "Library");
   lv_obj_add_event_cb(row_author, [](lv_event_t* e) {
       build_library_list(SORT_BY_AUTHOR);
+      lv_scr_load(screen_library);
+  }, LV_EVENT_CLICKED, NULL);
+
+  // Row 3.5: Books by Genre
+  lv_obj_t* row_genre = create_menu_row(list_cont, LV_SYMBOL_LIST, "Books by Genre", "Library");
+  lv_obj_add_event_cb(row_genre, [](lv_event_t* e) {
+      build_library_list(SORT_BY_GENRE);
       lv_scr_load(screen_library);
   }, LV_EVENT_CLICKED, NULL);
 

@@ -22,7 +22,7 @@ public:
   std::string getTitle() const;
 
   // Extract metadata directly from the file
-  static bool getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out);
+  static bool getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out, std::string& genre_out, std::string& summary_out);
 
   // Get the content (current page text)
   std::string getContent() const;

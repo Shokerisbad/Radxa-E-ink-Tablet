@@ -222,7 +222,7 @@ std::string PdfHandler::getContent() const {
   return "[IMG:A:" + bmp_path + "]";
 }
 
-bool PdfHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out) {
+bool PdfHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out, std::string& genre_out, std::string& summary_out) {
     if (!std::filesystem::exists(filepath)) return false;
 
     fz_context* ctx = fz_new_context(NULL, NULL, FZ_STORE_UNLIMITED);

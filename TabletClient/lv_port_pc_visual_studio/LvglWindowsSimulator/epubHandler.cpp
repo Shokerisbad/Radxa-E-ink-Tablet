@@ -660,7 +660,7 @@ bool EpubHandler::hasNextPage() const {
 
 bool EpubHandler::hasPrevPage() const { return m_currentPage > 0; }
 
-bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out) {
+bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out, std::string& genre_out, std::string& summary_out) {
   if (!std::filesystem::exists(filepath)) return false;
 
   int err = 0;
@@ -723,6 +723,26 @@ bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_ou
     size_t creator_end = opf_content.find("</dc:creator>", creator_start);
     if (creator_end != std::string::npos) {
       author_out = opf_content.substr(creator_start, creator_end - creator_start);
+    }
+  }
+
+  // Extract Genre
+  size_t subject_start = opf_content.find("<dc:subject");
+  if (subject_start != std::string::npos) {
+    subject_start = opf_content.find(">", subject_start) + 1;
+    size_t subject_end = opf_content.find("</dc:subject>", subject_start);
+    if (subject_end != std::string::npos) {
+      genre_out = opf_content.substr(subject_start, subject_end - subject_start);
+    }
+  }
+
+  // Extract Summary
+  size_t desc_start = opf_content.find("<dc:description");
+  if (desc_start != std::string::npos) {
+    desc_start = opf_content.find(">", desc_start) + 1;
+    size_t desc_end = opf_content.find("</dc:description>", desc_start);
+    if (desc_end != std::string::npos) {
+      summary_out = opf_content.substr(desc_start, desc_end - desc_start);
     }
   }
 

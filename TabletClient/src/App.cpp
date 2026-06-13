@@ -471,7 +471,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
         btn,
         [](lv_event_t *e) {
           RatingState *state = (RatingState *)lv_event_get_user_data(e);
-          lv_obj_t *clicked_btn = lv_event_get_current_target(e);
+          lv_obj_t *clicked_btn = (lv_obj_t *)lv_event_get_current_target(e);
           int rating = 0;
           for (int j = 0; j < 5; ++j) {
             if (state->star_btns[j] == clicked_btn) {
@@ -2465,9 +2465,9 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
 #else
         std::cout << "MOCK CONNECT KNOWN NETWORK to: " << target_ssid << std::endl;
 #endif
-        if (wifi_list_modal) {
-            lv_obj_del(wifi_list_modal);
-            wifi_list_modal = nullptr;
+        if (wifi_pwd_modal) {
+            lv_obj_del(wifi_pwd_modal);
+            wifi_pwd_modal = nullptr;
         }
         return;
     }

@@ -17,7 +17,7 @@
 
 // Hardware configuration
 #define SPI_DEVICE "/dev/spidev3.0"
-#define SPI_SPEED 2000000
+#define SPI_SPEED 10000000
 #define SPI_MODE SPI_MODE_0
 #define SPI_BITS 8
 
@@ -88,7 +88,7 @@ bool RadxaEPD::init_spi() {
     return false;
   }
 
-  uint8_t mode = SPI_MODE;
+  uint8_t mode = SPI_MODE | SPI_NO_CS;
   uint8_t bits = SPI_BITS;
   uint32_t speed = SPI_SPEED;
 
@@ -142,7 +142,7 @@ void RadxaEPD::wait_until_idle() {
   auto start = std::chrono::steady_clock::now();
   const int TIMEOUT_MS = 10000; // 10 second safety timeout
   while (gpiod_line_get_value(line_busy) == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
     if (elapsed > TIMEOUT_MS) {

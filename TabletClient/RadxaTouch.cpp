@@ -170,6 +170,16 @@ static auto last_press_time = std::chrono::steady_clock::now();
 void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
     if (!g_touch_instance) return;
 
+#ifndef _WIN32
+    // Check hardware INT pin first to prevent I2C flooding
+    if (gpiod_line_get_value(g_touch_instance->line_int) != 0) { 
+        data->point.x = g_touch_instance->last_x;
+        data->point.y = g_touch_instance->last_y;
+        data->state = g_touch_instance->is_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+        return; 
+    }
+#endif
+
     uint8_t point_data[10] = {0};
     auto now = std::chrono::steady_clock::now();
     bool hardware_reports_press = false;

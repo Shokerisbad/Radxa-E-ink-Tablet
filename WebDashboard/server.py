@@ -168,31 +168,78 @@ def sync_metadata():
                 if not title and not author:
                     continue
                     
-                q = ""
-                if title: q += f"intitle:{title}"
+                import re
+                clean_title = re.split(r'[:;]', title)[0].strip()
+                
+                def try_fetch(q):
+                    url = "https://www.googleapis.com/books/v1/volumes?q=" + urllib.parse.quote(q)
+                    print(f"[Dashboard Sync] Fetching {url}")
+                    try:
+                        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req, timeout=5) as response:
+                            data = json.loads(response.read().decode('utf-8'))
+                            if "items" in data and len(data["items"]) > 0:
+                                return data["items"][0].get("volumeInfo", {})
+                    except Exception as e:
+                        print(f"[Dashboard Sync] Fetch failed for {q}: {e}")
+                    return None
+
+                # 1. Strict query
+                q_strict = ""
+                if clean_title: q_strict += f"intitle:{clean_title}"
                 if author and author != "Unknown":
-                    if q: q += " "
-                    q += f"inauthor:{author}"
+                    if q_strict: q_strict += " "
+                    q_strict += f"inauthor:{author}"
+                
+                vol = try_fetch(q_strict) if q_strict else None
+                
+                # 2. Open Library fallback (for genre)
+                if not vol or ("categories" not in vol and genre == ""):
+                    ol_q = ""
+                    if clean_title: ol_q += f"title={urllib.parse.quote(clean_title)}"
+                    if author and author != "Unknown":
+                        if ol_q: ol_q += "&"
+                        ol_q += f"author={urllib.parse.quote(author)}"
                     
-                url = "https://www.googleapis.com/books/v1/volumes?q=" + urllib.parse.quote(q)
-                print(f"[Dashboard Sync] Fetching {url}")
-                try:
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=5) as response:
-                        data = json.loads(response.read().decode('utf-8'))
-                        if "items" in data and len(data["items"]) > 0:
-                            vol = data["items"][0].get("volumeInfo", {})
-                            cats = vol.get("categories", [])
-                            desc = vol.get("description", "")
-                            
-                            if cats and (genre == "Unknown Genre" or genre == ""):
-                                meta["genre"] = cats[0]
-                                changed = True
-                            if desc and (summary == "No summary available." or summary == ""):
-                                meta["summary"] = desc
-                                changed = True
-                except Exception as e:
-                    print(f"[Dashboard Sync] Failed for {title}: {e}")
+                    if ol_q:
+                        ol_url = f"https://openlibrary.org/search.json?{ol_q}"
+                        print(f"[Dashboard Sync] Fetching (OpenLibrary) {ol_url}")
+                        try:
+                            req = urllib.request.Request(ol_url, headers={'User-Agent': 'Mozilla/5.0'})
+                            with urllib.request.urlopen(req, timeout=5) as response:
+                                ol_data = json.loads(response.read().decode('utf-8'))
+                                if "docs" in ol_data and len(ol_data["docs"]) > 0:
+                                    ol_doc = ol_data["docs"][0]
+                                    if "subject" in ol_doc and len(ol_doc["subject"]) > 0:
+                                        if genre == "Unknown Genre" or genre == "":
+                                            meta["genre"] = ol_doc["subject"][0]
+                                            genre = meta["genre"]
+                                            changed = True
+                                            print(f"[Dashboard Sync] OpenLibrary found genre: {genre}")
+                        except Exception as e:
+                            print(f"[Dashboard Sync] OpenLibrary fetch failed: {e}")
+
+                # 3. Relaxed query fallback
+                if not vol or ("description" not in vol and summary == "") or ("categories" not in vol and genre == ""):
+                    q_relaxed = clean_title
+                    if author and author != "Unknown":
+                        if q_relaxed: q_relaxed += " "
+                        q_relaxed += author
+                    if q_relaxed:
+                        vol_relaxed = try_fetch(q_relaxed)
+                        if vol_relaxed:
+                            vol = vol_relaxed
+                
+                if vol:
+                    cats = vol.get("categories", [])
+                    desc = vol.get("description", "")
+                    
+                    if cats and (genre == "Unknown Genre" or genre == ""):
+                        meta["genre"] = cats[0]
+                        changed = True
+                    if desc and (summary == "No summary available." or summary == ""):
+                        meta["summary"] = desc
+                        changed = True
                     
         if changed:
             with open(cache_path, 'w') as f:

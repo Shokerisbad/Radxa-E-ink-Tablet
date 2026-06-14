@@ -957,16 +957,7 @@ static std::string url_encode(const std::string &value) {
     return escaped.str();
 }
 
-static bool fetch_google_books_metadata(const std::string& title, const std::string& author, std::string& genre_out, std::string& summary_out) {
-    if (title.empty() && author.empty()) return false;
-    
-    std::string q = "";
-    if (!title.empty()) q += "intitle:" + title;
-    if (!author.empty()) {
-        if (!q.empty()) q += " ";
-        q += "inauthor:" + author;
-    }
-    
+static bool fetch_google_books_metadata_internal(const std::string& q, std::string& genre_out, std::string& summary_out) {
     std::string url = "https://www.googleapis.com/books/v1/volumes?q=" + url_encode(q);
     std::string cmd = "curl -k -L -s \"" + url + "\" 2>&1";
     
@@ -1011,6 +1002,91 @@ static bool fetch_google_books_metadata(const std::string& title, const std::str
         return false;
     }
     return false;
+}
+
+static bool fetch_open_library_metadata(const std::string& title, const std::string& author, std::string& genre_out) {
+    std::string q = "";
+    if (!title.empty()) q += "title=" + url_encode(title);
+    if (!author.empty()) {
+        if (!q.empty()) q += "&";
+        q += "author=" + url_encode(author);
+    }
+    std::string url = "https://openlibrary.org/search.json?" + q;
+    std::string cmd = "curl -k -L -s \"" + url + "\" 2>&1";
+    
+    std::cout << "[API] Fetching (OpenLibrary): " << url << std::endl;
+    FILE* fp = popen(cmd.c_str(), "r");
+    if (!fp) return false;
+    
+    std::string response;
+    char buffer[512];
+    while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+        response += buffer;
+    }
+    pclose(fp);
+    
+    if (response.empty()) return false;
+    try {
+        json j = json::parse(response);
+        if (j.contains("docs") && j["docs"].is_array() && j["docs"].size() > 0) {
+            auto doc = j["docs"][0];
+            if (doc.contains("subject") && doc["subject"].is_array() && doc["subject"].size() > 0) {
+                genre_out = doc["subject"][0].get<std::string>();
+                std::cout << "[API] OpenLibrary Success! Found genre: " << genre_out << std::endl;
+                return true;
+            }
+        }
+    } catch (...) {}
+    std::cout << "[API] OpenLibrary No items/genres found." << std::endl;
+    return false;
+}
+
+static std::string strip_subtitle(std::string s) {
+    size_t pos = s.find_first_of(":;");
+    if (pos != std::string::npos) {
+        return s.substr(0, pos);
+    }
+    return s;
+}
+
+static bool fetch_google_books_metadata(const std::string& title, const std::string& author, std::string& genre_out, std::string& summary_out) {
+    if (title.empty() && author.empty()) return false;
+    
+    // 1. Strict query (Google Books)
+    std::string q_strict = "";
+    std::string clean_title = strip_subtitle(title);
+    if (!clean_title.empty()) q_strict += "intitle:" + clean_title;
+    if (!author.empty()) {
+        if (!q_strict.empty()) q_strict += " ";
+        q_strict += "inauthor:" + author;
+    }
+    
+    if (fetch_google_books_metadata_internal(q_strict, genre_out, summary_out)) {
+        if (!genre_out.empty() && !summary_out.empty()) return true;
+    }
+    
+    // 2. Open Library fallback (for genre)
+    if (genre_out.empty()) {
+        fetch_open_library_metadata(clean_title, author, genre_out);
+    }
+    
+    // 3. Relaxed query fallback (Google Books full text search)
+    if (genre_out.empty() || summary_out.empty()) {
+        std::string backup_genre, backup_summary;
+        std::string q_relaxed = clean_title;
+        if (!author.empty()) {
+            if (!q_relaxed.empty()) q_relaxed += " ";
+            q_relaxed += author;
+        }
+        
+        std::cout << "[API] Strict/OpenLib failed to get everything, trying relaxed query: " << q_relaxed << std::endl;
+        if (fetch_google_books_metadata_internal(q_relaxed, backup_genre, backup_summary)) {
+            if (genre_out.empty()) genre_out = backup_genre;
+            if (summary_out.empty()) summary_out = backup_summary;
+        }
+    }
+    
+    return (!genre_out.empty() || !summary_out.empty());
 }
 
 static void refresh_lib_cb(lv_event_t *e) { build_library_list(g_current_sort); }

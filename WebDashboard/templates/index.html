@@ -107,6 +107,9 @@
                         <i data-lucide="sliders"></i>
                     </div>
                     <div class="card-body action-buttons">
+                        <button class="btn btn-primary" onclick="syncMetadata()" id="sync-btn" style="width: 100%; margin-bottom: 10px;">
+                            <i data-lucide="download"></i> Sync Library Metadata
+                        </button>
                         <button class="btn btn-danger" onclick="rebootSystem()" id="reboot-btn">
                             <i data-lucide="power"></i> Reboot Tablet
                         </button>
@@ -344,6 +347,32 @@
             } catch (err) {
                 console.error("Delete failed:", err);
                 showToast("Failed to delete book", "error");
+            }
+        }
+
+        // Sync Library Metadata
+        async function syncMetadata() {
+            const syncBtn = document.getElementById('sync-btn');
+            const originalText = syncBtn.innerHTML;
+            syncBtn.disabled = true;
+            syncBtn.innerHTML = `<i data-lucide="loader" class="animate-spin"></i> Syncing...`;
+            lucide.createIcons();
+            
+            try {
+                const res = await fetch('/api/sync_metadata', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(data.message, "success");
+                } else {
+                    throw new Error(data.error || "Failed to sync metadata");
+                }
+            } catch (err) {
+                console.error("Sync failed:", err);
+                showToast(`Sync failed: ${err.message}`, "error");
+            } finally {
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = originalText;
+                lucide.createIcons();
             }
         }
 

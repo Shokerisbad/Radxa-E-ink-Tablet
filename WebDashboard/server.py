@@ -145,6 +145,65 @@ def delete_book(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/sync_metadata', methods=['POST'])
+def sync_metadata():
+    import json, urllib.request, urllib.parse, os
+    
+    cache_path = os.path.join(BOOKS_DIR, '.cache', 'metadata.json')
+    if not os.path.exists(cache_path):
+        return jsonify({"success": True, "message": "No cache found to sync."})
+        
+    try:
+        with open(cache_path, 'r') as f:
+            metadata = json.load(f)
+            
+        changed = False
+        for path, meta in metadata.items():
+            genre = meta.get("genre", "")
+            summary = meta.get("summary", "")
+            if genre == "Unknown Genre" or genre == "" or summary == "No summary available." or summary == "":
+                title = meta.get("title", "")
+                author = meta.get("author", "")
+                
+                if not title and not author:
+                    continue
+                    
+                q = ""
+                if title: q += f"intitle:{title}"
+                if author and author != "Unknown":
+                    if q: q += " "
+                    q += f"inauthor:{author}"
+                    
+                url = "https://www.googleapis.com/books/v1/volumes?q=" + urllib.parse.quote(q)
+                print(f"[Dashboard Sync] Fetching {url}")
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        data = json.loads(response.read().decode('utf-8'))
+                        if "items" in data and len(data["items"]) > 0:
+                            vol = data["items"][0].get("volumeInfo", {})
+                            cats = vol.get("categories", [])
+                            desc = vol.get("description", "")
+                            
+                            if cats and (genre == "Unknown Genre" or genre == ""):
+                                meta["genre"] = cats[0]
+                                changed = True
+                            if desc and (summary == "No summary available." or summary == ""):
+                                meta["summary"] = desc
+                                changed = True
+                except Exception as e:
+                    print(f"[Dashboard Sync] Failed for {title}: {e}")
+                    
+        if changed:
+            with open(cache_path, 'w') as f:
+                json.dump(metadata, f, indent=4)
+            return jsonify({"success": True, "message": "Metadata synced successfully. Reboot tablet to apply."})
+        else:
+            return jsonify({"success": True, "message": "Metadata sync complete. No updates found."})
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/status', methods=['GET'])
 def get_status():
     client_ip = request.remote_addr

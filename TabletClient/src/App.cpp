@@ -963,13 +963,20 @@ static bool fetch_google_books_metadata(const std::string& title, const std::str
     std::string q = "";
     if (!title.empty()) q += "intitle:" + title;
     if (!author.empty()) {
-        if (!q.empty()) q += "+";
+        if (!q.empty()) q += " ";
         q += "inauthor:" + author;
     }
     
-    std::string cmd = "curl -k -L -s \"https://www.googleapis.com/books/v1/volumes?q=" + url_encode(q) + "\" 2>&1";
+    std::string url = "https://www.googleapis.com/books/v1/volumes?q=" + url_encode(q);
+    std::string cmd = "curl -k -L -s \"" + url + "\" 2>&1";
+    
+    std::cout << "[API] Fetching: " << url << std::endl;
+    
     FILE* fp = popen(cmd.c_str(), "r");
-    if (!fp) return false;
+    if (!fp) {
+        std::cout << "[API] Failed to run curl." << std::endl;
+        return false;
+    }
     
     std::string response;
     char buffer[512];
@@ -978,7 +985,10 @@ static bool fetch_google_books_metadata(const std::string& title, const std::str
     }
     pclose(fp);
     
-    if (response.empty()) return false;
+    if (response.empty()) {
+        std::cout << "[API] Empty response from Google Books." << std::endl;
+        return false;
+    }
     
     try {
         json j = json::parse(response);
@@ -991,9 +1001,13 @@ static bool fetch_google_books_metadata(const std::string& title, const std::str
             if (volumeInfo.contains("description")) {
                 summary_out = volumeInfo["description"].get<std::string>();
             }
+            std::cout << "[API] Success! Found genre: " << (genre_out.empty() ? "None" : genre_out) << std::endl;
             return true;
+        } else {
+            std::cout << "[API] No items found in response for query: " << q << std::endl;
         }
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cout << "[API] JSON Parse Error: " << e.what() << "\nResponse snippet: " << response.substr(0, 100) << std::endl;
         return false;
     }
     return false;
@@ -1665,6 +1679,34 @@ static void reader_label_clicked_cb(lv_event_t * e) {
     fetch_dict_bg(best_word);
 }
 
+static void sync_metadata_cb(lv_event_t *e) {
+    if (!RadxaEPD::is_wifi_connected()) {
+        std::cout << "[Sync] Cannot sync metadata, no Wi-Fi connected." << std::endl;
+        return;
+    }
+
+    std::cout << "[Sync] Starting metadata sync..." << std::endl;
+    bool cache_changed = false;
+    for (auto& [path, meta] : g_book_metadata) {
+        if (meta.genre == "Unknown Genre" || meta.genre.empty() || meta.summary == "No summary available." || meta.summary.empty()) {
+            std::string api_g, api_s;
+            std::string author_query = (meta.author == "Unknown") ? "" : meta.author;
+            if (fetch_google_books_metadata(meta.title, author_query, api_g, api_s)) {
+                if (!api_g.empty() && (meta.genre == "Unknown Genre" || meta.genre.empty())) meta.genre = api_g;
+                if (!api_s.empty() && (meta.summary == "No summary available." || meta.summary.empty())) meta.summary = api_s;
+                cache_changed = true;
+            }
+        }
+    }
+
+    if (cache_changed) {
+        save_metadata_cache();
+        std::cout << "[Sync] Metadata sync complete. Cache updated." << std::endl;
+    } else {
+        std::cout << "[Sync] Metadata sync complete. No updates found." << std::endl;
+    }
+}
+
 void build_tablet_ui() {
   lv_style_transition_dsc_init(&no_trans_dsc, trans_props, NULL, 0, 0, NULL);
   load_reading_state();
@@ -1843,6 +1885,9 @@ void build_tablet_ui() {
   lv_obj_t *row_dark = create_menu_row(settings_cont, LV_SYMBOL_ADJUST, "Dark Mode", "Toggle inverted rendering");
   lv_obj_add_event_cb(row_dark, dark_mode_toggle_cb, LV_EVENT_CLICKED, NULL);
   
+  lv_obj_t *row_sync = create_menu_row(settings_cont, LV_SYMBOL_DOWNLOAD, "Sync Metadata", "Update missing genres/summaries");
+  lv_obj_add_event_cb(row_sync, sync_metadata_cb, LV_EVENT_CLICKED, NULL);
+
   char hostname[256];
   std::string dash_url = "radxa-zero.local";
   if (gethostname(hostname, sizeof(hostname)) == 0) {

@@ -88,7 +88,7 @@ bool RadxaEPD::init_spi() {
     return false;
   }
 
-  uint8_t mode = SPI_MODE | SPI_NO_CS;
+  uint8_t mode = SPI_MODE;
   uint8_t bits = SPI_BITS;
   uint32_t speed = SPI_SPEED;
 

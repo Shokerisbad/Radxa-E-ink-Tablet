@@ -1028,12 +1028,13 @@ static bool fetch_open_library_metadata(const std::string& title, const std::str
     if (response.empty()) return false;
     try {
         json j = json::parse(response);
-        if (j.contains("docs") && j["docs"].is_array() && j["docs"].size() > 0) {
-            auto doc = j["docs"][0];
-            if (doc.contains("subject") && doc["subject"].is_array() && doc["subject"].size() > 0) {
-                genre_out = doc["subject"][0].get<std::string>();
-                std::cout << "[API] OpenLibrary Success! Found genre: " << genre_out << std::endl;
-                return true;
+        if (j.contains("docs") && j["docs"].is_array()) {
+            for (auto& doc : j["docs"]) {
+                if (doc.contains("subject") && doc["subject"].is_array() && doc["subject"].size() > 0) {
+                    genre_out = doc["subject"][0].get<std::string>();
+                    std::cout << "[API] OpenLibrary Success! Found genre: " << genre_out << std::endl;
+                    return true;
+                }
             }
         }
     } catch (...) {}
@@ -1765,11 +1766,35 @@ static void sync_metadata_cb(lv_event_t *e) {
     bool cache_changed = false;
     for (auto& [path, meta] : g_book_metadata) {
         if (meta.genre == "Unknown Genre" || meta.genre.empty() || meta.summary == "No summary available." || meta.summary.empty()) {
-            std::string api_g, api_s;
-            std::string author_query = (meta.author == "Unknown") ? "" : meta.author;
-            if (fetch_google_books_metadata(meta.title, author_query, api_g, api_s)) {
-                if (!api_g.empty() && (meta.genre == "Unknown Genre" || meta.genre.empty())) meta.genre = api_g;
-                if (!api_s.empty() && (meta.summary == "No summary available." || meta.summary.empty())) meta.summary = api_s;
+            std::string old_g = meta.genre;
+            std::string old_s = meta.summary;
+
+            // 1. Try local re-parse first
+            std::string t, a, g, s;
+            std::string ext = path;
+            size_t dot_pos = ext.find_last_of('.');
+            if (dot_pos != std::string::npos) {
+                ext = ext.substr(dot_pos);
+                for (auto& c : ext) c = tolower(c);
+                if (ext == ".epub") EpubHandler::getMetadata(path, t, a, g, s);
+                else if (ext == ".pdf") PdfHandler::getMetadata(path, t, a, g, s);
+                
+                if (!g.empty() && (meta.genre == "Unknown Genre" || meta.genre.empty())) meta.genre = g;
+                if (!s.empty() && (meta.summary == "No summary available." || meta.summary.empty())) meta.summary = s;
+            }
+
+            // 2. If still missing, fallback to APIs
+            if (meta.genre == "Unknown Genre" || meta.genre.empty() || meta.summary == "No summary available." || meta.summary.empty()) {
+                std::string api_g, api_s;
+                std::string author_query = (meta.author == "Unknown") ? "" : meta.author;
+                if (fetch_google_books_metadata(meta.title, author_query, api_g, api_s)) {
+                    if (!api_g.empty() && (meta.genre == "Unknown Genre" || meta.genre.empty())) meta.genre = api_g;
+                    if (!api_s.empty() && (meta.summary == "No summary available." || meta.summary.empty())) meta.summary = api_s;
+                }
+                sleep(1); // Small delay to avoid Google Books API 429 Too Many Requests
+            }
+
+            if (meta.genre != old_g || meta.summary != old_s) {
                 cache_changed = true;
             }
         }

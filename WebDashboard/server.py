@@ -162,11 +162,34 @@ def sync_metadata():
             genre = meta.get("genre", "")
             summary = meta.get("summary", "")
             if genre == "Unknown Genre" or genre == "" or summary == "No summary available." or summary == "":
-                title = meta.get("title", "")
-                author = meta.get("author", "")
-                
-                if not title and not author:
-                    continue
+                # 0. Try local re-parse first for EPUBs
+                if path.lower().endswith('.epub') and os.path.exists(path):
+                    try:
+                        import zipfile, xml.etree.ElementTree as ET
+                        with zipfile.ZipFile(path) as z:
+                            for name in z.namelist():
+                                if name.endswith('.opf'):
+                                    root = ET.fromstring(z.read(name))
+                                    subjects = root.findall('.//{http://purl.org/dc/elements/1.1/}subject')
+                                    descriptions = root.findall('.//{http://purl.org/dc/elements/1.1/}description')
+                                    if subjects and subjects[0].text and (genre == "Unknown Genre" or genre == ""):
+                                        meta["genre"] = subjects[0].text
+                                        genre = meta["genre"]
+                                        changed = True
+                                    if descriptions and descriptions[0].text and (summary == "No summary available." or summary == ""):
+                                        meta["summary"] = descriptions[0].text
+                                        summary = meta["summary"]
+                                        changed = True
+                                    break
+                    except Exception as e:
+                        print(f"[Dashboard Sync] Local epub parse failed for {path}: {e}")
+
+                if genre == "Unknown Genre" or genre == "" or summary == "No summary available." or summary == "":
+                    title = meta.get("title", "")
+                    author = meta.get("author", "")
+                    
+                    if not title and not author:
+                        continue
                     
                 import re
                 clean_title = re.split(r'[:;]', title)[0].strip()
@@ -208,14 +231,15 @@ def sync_metadata():
                             req = urllib.request.Request(ol_url, headers={'User-Agent': 'Mozilla/5.0'})
                             with urllib.request.urlopen(req, timeout=5) as response:
                                 ol_data = json.loads(response.read().decode('utf-8'))
-                                if "docs" in ol_data and len(ol_data["docs"]) > 0:
-                                    ol_doc = ol_data["docs"][0]
-                                    if "subject" in ol_doc and len(ol_doc["subject"]) > 0:
-                                        if genre == "Unknown Genre" or genre == "":
-                                            meta["genre"] = ol_doc["subject"][0]
-                                            genre = meta["genre"]
-                                            changed = True
-                                            print(f"[Dashboard Sync] OpenLibrary found genre: {genre}")
+                                if "docs" in ol_data:
+                                    for ol_doc in ol_data["docs"]:
+                                        if "subject" in ol_doc and len(ol_doc["subject"]) > 0:
+                                            if genre == "Unknown Genre" or genre == "":
+                                                meta["genre"] = ol_doc["subject"][0]
+                                                genre = meta["genre"]
+                                                changed = True
+                                                print(f"[Dashboard Sync] OpenLibrary found genre: {genre}")
+                                            break
                         except Exception as e:
                             print(f"[Dashboard Sync] OpenLibrary fetch failed: {e}")
 
@@ -240,6 +264,10 @@ def sync_metadata():
                     if desc and (summary == "No summary available." or summary == ""):
                         meta["summary"] = desc
                         changed = True
+                
+                # Small delay to avoid Google Books API 429 Too Many Requests
+                import time
+                time.sleep(1)
                     
         if changed:
             with open(cache_path, 'w') as f:

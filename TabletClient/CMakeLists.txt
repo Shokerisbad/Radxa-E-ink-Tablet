@@ -32,6 +32,7 @@ set(SOURCES
     RadxaEPD.cpp
     RadxaTouch.cpp
     src/App.cpp
+    src/stars_font.c
     lv_port_pc_visual_studio/LvglWindowsSimulator/epubHandler.cpp
     lv_port_pc_visual_studio/LvglWindowsSimulator/pdfHandler.cpp
 )

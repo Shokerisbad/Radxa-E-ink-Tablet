@@ -460,10 +460,12 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
       },
       LV_EVENT_DELETE, rstate);
 
+  LV_FONT_DECLARE(stars_font);
   for (int i = 0; i < 5; ++i) {
     lv_obj_t *btn = create_styled_btn(btn_container);
     lv_obj_set_style_pad_all(btn, 10, 0); // bigger touch area
     lv_obj_t *btn_lbl = lv_label_create(btn);
+    lv_obj_set_style_text_font(btn_lbl, &stars_font, 0);
     lv_label_set_text(btn_lbl, "\xE2\x98\x86"); // hollow star
     rstate->star_btns[i] = btn;
     rstate->star_labels[i] = btn_lbl;

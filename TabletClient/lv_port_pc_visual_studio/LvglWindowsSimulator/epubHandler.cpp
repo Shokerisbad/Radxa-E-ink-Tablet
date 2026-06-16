@@ -102,10 +102,28 @@ std::string EpubHandler::replaceUtf8Characters(const std::string &str) {
   return result;
 }
 
+static std::string url_decode(const std::string& str) {
+    std::string ret;
+    for (size_t i = 0; i < str.length(); i++) {
+        if (str[i] == '%' && i + 2 < str.length()) {
+            int v = 0;
+            sscanf(str.substr(i + 1, 2).c_str(), "%x", &v);
+            ret += static_cast<char>(v);
+            i += 2;
+        } else if (str[i] == '+') {
+            ret += ' ';
+        } else {
+            ret += str[i];
+        }
+    }
+    return ret;
+}
+
 std::string EpubHandler::stripHtmlTags(const std::string &html,
                                        const std::string &bookTitle) {
   std::string result;
   bool inTag = false;
+  bool skipContent = false;
   std::string tagName;
   for (size_t i = 0; i < html.length(); ++i) {
     char c = html[i];
@@ -118,13 +136,31 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
       for (auto &tc : t)
         tc = tolower(tc);
 
-      if (t.find("img") == 0) {
+      std::string mainTag = t;
+      size_t space_pos = t.find_first_of(" \t\n\r");
+      if (space_pos != std::string::npos) mainTag = t.substr(0, space_pos);
+      if (!mainTag.empty() && mainTag.back() == '/') mainTag.pop_back();
+
+      if (mainTag == "head" || mainTag == "title" || mainTag == "style" || mainTag == "script") {
+          skipContent = true;
+      } else if (mainTag == "/head" || mainTag == "/title" || mainTag == "/style" || mainTag == "/script") {
+          skipContent = false;
+      }
+
+      if (mainTag == "img" || mainTag == "image") {
+        size_t start_quote = std::string::npos;
         size_t src_pos = t.find("src=\"");
-        if (src_pos != std::string::npos) {
-          size_t end_pos = t.find("\"", src_pos + 5);
+        if (src_pos != std::string::npos) start_quote = src_pos + 5;
+        else {
+            size_t href_pos = t.find("href=\"");
+            if (href_pos != std::string::npos) start_quote = href_pos + 6;
+        }
+
+        if (start_quote != std::string::npos) {
+          size_t end_pos = t.find("\"", start_quote);
           if (end_pos != std::string::npos) {
-            std::string src =
-                tagName.substr(src_pos + 5, end_pos - (src_pos + 5));
+            std::string src = tagName.substr(start_quote, end_pos - start_quote);
+            src = url_decode(src);
             std::string filename = std::filesystem::path(src)
                                        .filename()
                                        .replace_extension(".bmp")
@@ -133,17 +169,17 @@ std::string EpubHandler::stripHtmlTags(const std::string &html,
                       filename + "]\n\n";
           }
         }
-      } else if (t == "p" || t == "/p" || t == "br" || t == "br/" ||
-                 t == "br /" || t == "div" || t == "/div" || t == "h1" ||
-                 t == "/h1" || t == "h2" || t == "/h2" || t == "h3" ||
-                 t == "/h3") {
+      } else if (mainTag == "p" || mainTag == "/p" || mainTag == "br" ||
+                 mainTag == "div" || mainTag == "/div" || mainTag == "h1" ||
+                 mainTag == "/h1" || mainTag == "h2" || mainTag == "/h2" || mainTag == "h3" ||
+                 mainTag == "/h3") {
         result += "\n";
       } else {
         result += ' ';
       }
     } else if (inTag) {
       tagName += c;
-    } else {
+    } else if (!skipContent) {
       if (c == '&') {
         // Decode basic HTML entities to prevent LVGL rendering boxes
         std::string entity;
@@ -347,6 +383,8 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
   std::string book_img_dir = "books/.cache/" + m_title + "_imgs/";
   std::filesystem::create_directories(book_img_dir);
 
+  int total_img_count = 0;
+
   // First pass: extract images
   for (zip_int64_t i = 0; i < num_entries; i++) {
     const char *name = zip_get_name(z, i, 0);
@@ -361,6 +399,8 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
         sname_lower.find(".jpeg") != std::string::npos ||
         sname_lower.find(".png") != std::string::npos ||
         sname_lower.find(".bmp") != std::string::npos) {
+
+      total_img_count++;
 
       std::string filename = std::filesystem::path(sname).filename().string();
       std::string out_path = book_img_dir + filename;
@@ -576,6 +616,36 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
   }
   
   zip_close(z);
+
+  // Manga detection: If the epub has many images and very little text,
+  // we assume it's a manga/comic and strip out all text to prevent useless title pages.
+  if (total_img_count > 5 && full_text.length() < total_img_count * 200) {
+      std::string only_images;
+      std::map<size_t, size_t> old_to_new;
+      size_t p = 0;
+      while ((p = full_text.find("[IMG:", p)) != std::string::npos) {
+          size_t end_p = full_text.find("]", p);
+          if (end_p != std::string::npos) {
+              old_to_new[p] = only_images.length();
+              only_images += full_text.substr(p, end_p - p + 1) + "\n";
+              p = end_p + 1;
+          } else {
+              p += 5;
+          }
+      }
+      
+      // Update file offsets based on the closest old offset
+      for (auto& pair : file_offsets) {
+          size_t old_offset = pair.second;
+          size_t new_offset = 0;
+          for (auto& m : old_to_new) {
+              if (m.first <= old_offset) new_offset = m.second;
+          }
+          pair.second = new_offset;
+      }
+      
+      full_text = only_images;
+  }
 
   // Map TOC offsets
   for (auto& ch : m_toc) {

@@ -94,6 +94,7 @@ void create_status_bar() {
     lv_obj_add_flag(refresh_label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(refresh_label, NULL, LV_STATE_PRESSED); // no animation
     lv_obj_add_event_cb(refresh_label, [](lv_event_t *e) {
+        update_status_bar();
         if(g_epd_instance) {
             g_epd_instance->force_full_refresh();
             lv_obj_invalidate(lv_scr_act());

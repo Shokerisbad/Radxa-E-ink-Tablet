@@ -406,6 +406,7 @@ static void load_screen_cb(lv_event_t *e) {
       update_continue_reading_button();
   }
   lv_scr_load(target);
+  update_status_bar();
 }
 
 
@@ -644,6 +645,7 @@ static void reader_next_cb(lv_event_t *e) {
   }
   save_reading_state();
   update_reader_ui();
+  update_status_bar();
   check_end_of_book();
 }
 
@@ -657,6 +659,7 @@ static void reader_prev_cb(lv_event_t *e) {
   }
   save_reading_state();
   update_reader_ui();
+  update_status_bar();
 }
 
 static void toggle_bottombar_cb(lv_event_t *e) {
@@ -921,6 +924,7 @@ static void book_clicked_cb(lv_event_t *e) {
     if (reader_content_label)
       lv_label_set_text(reader_content_label, "Unsupported file.");
     lv_scr_load(screen_book_reader);
+    update_status_bar();
     return;
   }
 
@@ -939,6 +943,7 @@ static void book_clicked_cb(lv_event_t *e) {
 
   update_reader_ui();
   lv_scr_load(screen_book_reader);
+  update_status_bar();
 }
 
 static SortMode g_current_sort = SORT_BY_TITLE;
@@ -1340,6 +1345,7 @@ static void jump_btn_cb(lv_event_t *e) {
           }
           save_reading_state();
           update_reader_ui();
+          update_status_bar();
           check_end_of_book();
         }
         lv_obj_del(data->modal);
@@ -1380,11 +1386,13 @@ static void global_gesture_cb(lv_event_t *e) {
     if (dir == LV_DIR_RIGHT) {
       // Swipe to the right -> go back to main screen
       lv_scr_load(screen_main);
+      update_status_bar();
     }
   } else if (screen == screen_ai) {
     if (dir == LV_DIR_RIGHT) {
       // Swipe to the right -> go back to main screen
       lv_scr_load(screen_main);
+      update_status_bar();
     }
   }
 }
@@ -1937,6 +1945,7 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(row_title, [](lv_event_t* e) {
       build_library_list(SORT_BY_TITLE);
       lv_scr_load(screen_library);
+      update_status_bar();
   }, LV_EVENT_CLICKED, NULL);
 
   // Row 3: Books by Author
@@ -1944,6 +1953,7 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(row_author, [](lv_event_t* e) {
       build_library_list(SORT_BY_AUTHOR);
       lv_scr_load(screen_library);
+      update_status_bar();
   }, LV_EVENT_CLICKED, NULL);
 
   // Row 3.5: Books by Genre
@@ -1951,6 +1961,7 @@ void build_tablet_ui() {
   lv_obj_add_event_cb(row_genre, [](lv_event_t* e) {
       build_library_list(SORT_BY_GENRE);
       lv_scr_load(screen_library);
+      update_status_bar();
   }, LV_EVENT_CLICKED, NULL);
 
   // Row 4: AI Assistant
@@ -2421,6 +2432,7 @@ static void render_ai_async_cb(void* user_data) {
 // --- NETWORK HTTP REQUEST ---
 static void request_ai_recommendation(const std::string &user_prompt, bool exact_match, bool use_reviews) {
   lv_scr_load(screen_ai);
+  update_status_bar();
   lv_obj_clean(ai_content);
   lv_obj_t *loading_lbl = lv_label_create(ai_content);
   lv_label_set_text(loading_lbl, "Thinking...");

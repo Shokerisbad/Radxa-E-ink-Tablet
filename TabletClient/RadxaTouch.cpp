@@ -201,9 +201,9 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
                     int raw_x = point_data[2] | (point_data[3] << 8);
                     int raw_y = point_data[4] | (point_data[5] << 8);
 
-                    // Map to LVGL Logical Portrait (480x800).
-                    int log_x = raw_y;
-                    int log_y = 799 - raw_x;
+                    // Map to LVGL Logical Portrait (480x800) rotated 180 degrees.
+                    int log_x = 479 - raw_y;
+                    int log_y = raw_x;
 
                     // Clamp to prevent LVGL warnings
                     if (log_x < 0) log_x = 0;

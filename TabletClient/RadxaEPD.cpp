@@ -353,9 +353,9 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         uint8_t brightness =
             (buf32[src_idx].red + buf32[src_idx].green + buf32[src_idx].blue) / 3;
         if (brightness < 128) {
-          // Map logical portrait -> physical landscape (90° CW rotation)
-          int px = log_h - 1 - ly;
-          int py = lx;
+          // Map logical portrait -> physical landscape (270° CW rotation for 180° flip)
+          int px = ly;
+          int py = log_w - 1 - lx;
           int phys_idx = py * phys_w + px;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
@@ -373,8 +373,8 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
         uint8_t b = buf16[src_idx] & 0x1F;
         uint8_t brightness = (r * 8 + g * 4 + b * 8) / 3;
         if (brightness < 128) {
-          int px = log_h - 1 - ly;
-          int py = lx;
+          int px = ly;
+          int py = log_w - 1 - lx;
           int phys_idx = py * phys_w + px;
           int byte_idx = phys_idx / 8;
           int bit_idx = 7 - (phys_idx % 8);
@@ -396,11 +396,11 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   } else {
     // Partial Refresh Flow
     // Calculate raw physical coordinates from logical dirty area
-    // Rotation: logical (lx, ly) -> physical (log_h - 1 - ly, lx)
-    int px_start = log_h - 1 - area->y2;
-    int px_end = log_h - 1 - area->y1;
-    int py_start = area->x1;
-    int py_end = area->x2;
+    // Rotation: logical (lx, ly) -> physical (ly, log_w - 1 - lx)
+    int px_start = area->y1;
+    int px_end = area->y2;
+    int py_start = log_w - 1 - area->x2;
+    int py_end = log_w - 1 - area->x1;
 
     // Align physical horizontal coordinates to 8-pixel boundaries for UC8179 controller
     int x_start = px_start & ~7;
@@ -424,10 +424,10 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     lv_color32_t *buf32 = (lv_color32_t *)px_map;
     for (int py_offset = 0; py_offset < part_h; py_offset++) {
       int py = y_start + py_offset;
-      int lx = py;
+      int lx = log_w - 1 - py;
       for (int px_offset = 0; px_offset < part_w; px_offset++) {
         int px = x_start + px_offset;
-        int ly = log_h - 1 - px;
+        int ly = px;
 
         int src_idx = ly * log_w + lx;
         uint8_t brightness =
@@ -444,10 +444,10 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
     uint16_t *buf16 = (uint16_t *)px_map;
     for (int py_offset = 0; py_offset < part_h; py_offset++) {
       int py = y_start + py_offset;
-      int lx = py;
+      int lx = log_w - 1 - py;
       for (int px_offset = 0; px_offset < part_w; px_offset++) {
         int px = x_start + px_offset;
-        int ly = log_h - 1 - px;
+        int ly = px;
 
         int src_idx = ly * log_w + lx;
         uint8_t r = (buf16[src_idx] >> 11) & 0x1F;

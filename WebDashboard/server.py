@@ -56,6 +56,9 @@ def get_battery_percentage():
                     return int(f.read().strip())
             except Exception:
                 pass
+    # Return mock value if running locally on development laptop (Windows/Mac)
+    if sys.platform != 'linux':
+        return 85
     return -1 # -1 signifies running on mains or unsupported PMIC
 
 def get_cpu_temperature():

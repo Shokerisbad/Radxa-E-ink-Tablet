@@ -1400,65 +1400,27 @@ static void global_gesture_cb(lv_event_t *e) {
   }
 }
 
-// Map physical pin names to Rockchip sysfs numbers
-// Formula: Bank * 32 + (Group * 8) + Pin
-static int get_sysfs_gpio_number(const std::string& pin_name) {
-    if (pin_name == "PIN_35") return 97; // GPIO3_A1 -> 3*32 + 0*8 + 1 = 97
-    if (pin_name == "PIN_37") return 98; // GPIO3_A2 -> 3*32 + 0*8 + 2 = 98
-    return -1;
-}
+bool g_is_software_sleeping = false;
 
 static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
+    // Don't trigger sleep again if we are already sleeping
+    if (g_is_software_sleeping) return;
+    
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
     if (inactive_time > 20000) { // 20 seconds of inactivity
-        std::cout << "Inactivity timeout reached (20s)! Suspending system..." << std::endl;
+        std::cout << "Inactivity timeout reached (20s)! Entering Software Sleep..." << std::endl;
         
-        int gpio_num = get_sysfs_gpio_number(TOUCH_PIN_INT);
-        if (gpio_num != -1) {
-            std::string sysfs_base = "/sys/class/gpio/gpio" + std::to_string(gpio_num);
-            
-            // Release libgpiod hold so sysfs can export it
-            if (g_touch_instance) {
-                g_touch_instance->prepare_for_sleep();
-            }
-
-            // Export the GPIO, redirecting error to null in case it's already exported
-            std::string export_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/export 2>/dev/null";
-            system(export_cmd.c_str());
-            
-            // Configure trigger edge and enable system wakeup
-            system(("echo in > " + sysfs_base + "/direction").c_str());
-            system(("echo falling > " + sysfs_base + "/edge").c_str());
-            system(("echo enabled > " + sysfs_base + "/power/wakeup").c_str());
-        }
-        
-        lv_disp_trig_activity(NULL); 
+        g_is_software_sleeping = true;
         
         if (g_epd_instance) {
             g_epd_instance->sleep();
         }
-
-        // Suspend to idle (keeps GPIO3 powered and INT pin active)
-        system("echo freeze > /sys/power/state");
-
-        // --- System is now asleep and will resume here after touch is detected ---
-
-        if (g_epd_instance) {
-            g_epd_instance->wake();
-            lv_obj_invalidate(lv_scr_act());
-        }
-
-        // Cleanup sysfs and re-acquire libgpiod hold
-        if (gpio_num != -1) {
-            std::string unexport_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/unexport 2>/dev/null";
-            system(unexport_cmd.c_str());
-
-            if (g_touch_instance) {
-                g_touch_instance->resume_from_sleep();
-            }
-        }
+        
+        // We do NOT suspend the OS. The CPU will continue running the LVGL loop,
+        // but since the EPD is asleep and LVGL has no active tasks, CPU usage drops.
+        // RadxaTouch::read_cb will detect the next touch and wake the system!
     }
 }
 

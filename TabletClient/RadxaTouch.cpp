@@ -9,6 +9,9 @@
 #include <thread>
 #include <chrono>
 #include <cstring>
+#include "RadxaEPD.h"
+
+extern bool g_is_software_sleeping;
 
 RadxaTouch *g_touch_instance = nullptr;
 
@@ -190,6 +193,18 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
         if (status & 0x80) { // Buffer status bit (1 = data ready)
             int touch_count = status & 0x0F;
             if (touch_count > 0 && touch_count <= 5) {
+                
+                // --- Software Sleep Wakeup ---
+                if (g_is_software_sleeping) {
+                    g_is_software_sleeping = false;
+                    if (g_epd_instance) {
+                        g_epd_instance->wake();
+                        lv_obj_invalidate(lv_scr_act());
+                        lv_disp_trig_activity(NULL);
+                    }
+                    std::cout << "Software Sleep Interrupted by Touch! Waking E-ink display..." << std::endl;
+                }
+
                 if (now < g_touch_instance->ignore_until) {
                     // EPD is refreshing.
                     // FORCE a release. If we maintain a 'true' state for 500-1200ms, 

@@ -94,7 +94,7 @@ void create_status_bar() {
     lv_obj_add_flag(refresh_label, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_style(refresh_label, NULL, LV_STATE_PRESSED); // no animation
     lv_obj_add_event_cb(refresh_label, [](lv_event_t *e) {
-        update_status_bar();
+        update_status_bar(true);
         if(g_epd_instance) {
             g_epd_instance->force_full_refresh();
             lv_obj_invalidate(lv_scr_act());
@@ -118,7 +118,7 @@ void init_status_bar_labels(lv_obj_t* w, lv_obj_t* v, lv_obj_t* b, lv_obj_t* t) 
     g_t_lbl = t;
 }
 
-void update_status_bar() {
+void update_status_bar(bool force_full_refresh) {
     if (!g_w_lbl || !g_v_lbl || !g_b_lbl || !g_t_lbl) return;
 
     // Update Wi-Fi
@@ -135,11 +135,13 @@ void update_status_bar() {
         lv_label_set_text(g_v_lbl, "");
     }
 
-    // Update Battery with 5% step logic to avoid constant refreshes
+    // Update Battery
     static int last_displayed_batt = -1;
     int batt = RadxaEPD::get_battery_percentage();
     if (batt >= 0) {
-        if (last_displayed_batt == -1 || abs(batt - last_displayed_batt) >= 5 || batt == 100 || batt <= 5) {
+        bool is_full_refresh = force_full_refresh || (g_epd_instance && g_epd_instance->is_next_refresh_full());
+        bool is_milestone = (batt == 100 || batt == 75 || batt == 50 || batt == 25 || batt == 10 || batt == 5);
+        if (last_displayed_batt == -1 || is_full_refresh || is_milestone) {
             lv_label_set_text_fmt(g_b_lbl, LV_SYMBOL_BATTERY_FULL " %d%%", batt);
             last_displayed_batt = batt;
         }

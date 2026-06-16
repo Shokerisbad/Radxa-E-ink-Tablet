@@ -28,6 +28,11 @@ public:
     // Forces the next refresh to be a full hardware refresh
     void force_full_refresh();
 
+    // Checks if the next refresh will be a full hardware refresh
+    bool is_next_refresh_full() const {
+        return first_refresh || (partial_refresh_count >= 5);
+    }
+
     // System Status Checkers
     static int get_battery_percentage();
     static bool is_wifi_connected();
@@ -54,6 +59,7 @@ private:
     void refresh_partial(int x_start, int y_start, const uint8_t *buffer, int part_w, int part_h);
 
     bool first_refresh;
+    int partial_refresh_count;
 };
 
 extern bool g_dark_mode;

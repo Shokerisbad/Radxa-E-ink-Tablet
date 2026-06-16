@@ -9,7 +9,7 @@
 #define popen _popen
 #define pclose _pclose
 bool g_dark_mode = false;
-void update_status_bar() {}
+void update_status_bar(bool force_full_refresh) {}
 #endif
 
 #ifndef LV_SYMBOL_ADJUST
@@ -1400,6 +1400,7 @@ static void global_gesture_cb(lv_event_t *e) {
 }
 
 static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
+    update_status_bar(false);
     // SLEEP TEMPORARILY DISABLED
     /*
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
@@ -2556,21 +2557,129 @@ static void request_ai_recommendation(const std::string &user_prompt, bool exact
 
 // --- WIFI CONNECTION MANAGER ---
 
+static lv_obj_t* wifi_list_modal = nullptr;
 static lv_obj_t* wifi_pwd_modal = nullptr;
 static lv_obj_t* wifi_kb = nullptr;
 static lv_obj_t* wifi_pwd_ta = nullptr;
+static lv_obj_t* wifi_connecting_modal = nullptr;
 static std::string target_ssid = "";
+
+struct WifiConnectProgress {
+    enum State {
+        SUCCESS_MSG,
+        CLOSE_ALL,
+        FAIL_MSG
+    } state;
+    std::string ssid;
+};
+
+static void wifi_connect_progress_cb(void * data) {
+    auto * progress = (WifiConnectProgress*)data;
+    
+    if (progress->state == WifiConnectProgress::SUCCESS_MSG) {
+        if (wifi_connecting_modal) {
+            lv_obj_t * conn_lbl = lv_obj_get_child(wifi_connecting_modal, 0);
+            if (conn_lbl && lv_obj_check_type(conn_lbl, &lv_label_class)) {
+                lv_label_set_text_fmt(conn_lbl, "Connected to:\n%s\n\nSuccessfully!", progress->ssid.c_str());
+            }
+        }
+        update_status_bar(true); // Immediate update of WiFi icon
+    } 
+    else if (progress->state == WifiConnectProgress::CLOSE_ALL) {
+        if (wifi_connecting_modal) {
+            lv_obj_del(wifi_connecting_modal);
+            wifi_connecting_modal = nullptr;
+        }
+        if (wifi_list_modal) {
+            lv_obj_del(wifi_list_modal);
+            wifi_list_modal = nullptr;
+        }
+        update_status_bar(true); // Final status bar update and E-ink refresh
+    } 
+    else if (progress->state == WifiConnectProgress::FAIL_MSG) {
+        if (wifi_connecting_modal) {
+            lv_obj_t * conn_lbl = lv_obj_get_child(wifi_connecting_modal, 0);
+            if (conn_lbl && lv_obj_check_type(conn_lbl, &lv_label_class)) {
+                lv_label_set_text_fmt(conn_lbl, "Failed to connect to:\n%s\n\nPlease check password/credentials.", progress->ssid.c_str());
+            }
+            
+            // Add a Close button
+            lv_obj_t * close_btn = create_styled_btn(wifi_connecting_modal);
+            lv_obj_t * close_lbl = lv_label_create(close_btn);
+            lv_label_set_text(close_lbl, "Close");
+            lv_obj_set_style_bg_color(close_btn, lv_color_white(), LV_STATE_PRESSED);
+            lv_obj_add_event_cb(close_btn, [](lv_event_t *e) {
+                if (wifi_connecting_modal) {
+                    lv_obj_del(wifi_connecting_modal);
+                    wifi_connecting_modal = nullptr;
+                }
+            }, LV_EVENT_CLICKED, NULL);
+            
+            lv_obj_invalidate(wifi_connecting_modal);
+        }
+    }
+    
+    delete progress;
+}
+
+static void start_wifi_connection(const std::string& ssid, const std::string& password, bool is_known) {
+    if (wifi_connecting_modal) {
+        lv_obj_del(wifi_connecting_modal);
+        wifi_connecting_modal = nullptr;
+    }
+    
+    wifi_connecting_modal = create_white_container(lv_layer_top());
+    lv_obj_set_size(wifi_connecting_modal, 360, 240);
+    lv_obj_center(wifi_connecting_modal);
+    lv_obj_set_style_border_color(wifi_connecting_modal, lv_color_black(), 0);
+    lv_obj_set_style_border_width(wifi_connecting_modal, 2, 0);
+    lv_obj_set_flex_flow(wifi_connecting_modal, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(wifi_connecting_modal, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t * conn_lbl = lv_label_create(wifi_connecting_modal);
+    lv_label_set_text_fmt(conn_lbl, "Connecting to:\n%s\n\nPlease wait...", ssid.c_str());
+    lv_obj_set_style_text_align(conn_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    
+    // Spawn background thread to connect
+    std::thread([ssid, password, is_known]() {
+        bool success = false;
+#ifndef _WIN32
+        std::string cmd;
+        if (is_known) {
+            cmd = "nmcli connection up \"" + ssid + "\"";
+        } else {
+            cmd = "nmcli dev wifi connect \"" + ssid + "\" password \"" + password + "\"";
+        }
+        int ret = system(cmd.c_str());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        success = (ret == 0) && RadxaEPD::is_wifi_connected();
+#else
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+        success = (password != "wrong");
+#endif
+
+        if (success) {
+            lvgl_mutex.lock();
+            lv_async_call(wifi_connect_progress_cb, new WifiConnectProgress{WifiConnectProgress::SUCCESS_MSG, ssid});
+            lvgl_mutex.unlock();
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+
+            lvgl_mutex.lock();
+            lv_async_call(wifi_connect_progress_cb, new WifiConnectProgress{WifiConnectProgress::CLOSE_ALL, ssid});
+            lvgl_mutex.unlock();
+        } else {
+            lvgl_mutex.lock();
+            lv_async_call(wifi_connect_progress_cb, new WifiConnectProgress{WifiConnectProgress::FAIL_MSG, ssid});
+            lvgl_mutex.unlock();
+        }
+    }).detach();
+}
 
 static void wifi_connect_cb(lv_event_t * e) {
     if(!wifi_pwd_ta) return;
-    const char * pwd = lv_textarea_get_text(wifi_pwd_ta);
-    std::string cmd;
-#ifndef _WIN32
-    cmd = "nmcli dev wifi connect \"" + target_ssid + "\" password \"" + std::string(pwd) + "\"";
-    system(cmd.c_str());
-#else
-    std::cout << "MOCK CONNECT to: " << target_ssid << " with pwd: " << pwd << std::endl;
-#endif
+    std::string pwd = lv_textarea_get_text(wifi_pwd_ta);
+    std::string ssid = target_ssid;
 
     if(wifi_pwd_modal) {
         lv_obj_del(wifi_pwd_modal);
@@ -2578,6 +2687,8 @@ static void wifi_connect_cb(lv_event_t * e) {
         wifi_kb = nullptr;
         wifi_pwd_ta = nullptr;
     }
+    
+    start_wifi_connection(ssid, pwd, false);
 }
 
 static void wifi_ssid_clicked_cb(lv_event_t * e) {
@@ -2618,17 +2729,14 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
 #endif
 
     if (known) {
-        // Connect directly without prompting for password
-#ifndef _WIN32
-        std::string cmd = "nmcli connection up \"" + target_ssid + "\"";
-        system(cmd.c_str());
-#else
-        std::cout << "MOCK CONNECT KNOWN NETWORK to: " << target_ssid << std::endl;
-#endif
         if (wifi_pwd_modal) {
             lv_obj_del(wifi_pwd_modal);
             wifi_pwd_modal = nullptr;
+            wifi_kb = nullptr;
+            wifi_pwd_ta = nullptr;
         }
+        // Connect directly in background
+        start_wifi_connection(target_ssid, "", true);
         return;
     }
 
@@ -2708,7 +2816,12 @@ static void wifi_ssid_clicked_cb(lv_event_t * e) {
     }, LV_EVENT_CLICKED, NULL);
 }
 
-static lv_obj_t* wifi_list_modal = nullptr;
+
+struct WifiScanResult {
+    std::vector<std::string> ssids;
+    lv_obj_t* list;
+    lv_obj_t* scanning_lbl;
+};
 
 void show_wifi_menu() {
     if(wifi_list_modal) return; // already open
@@ -2739,37 +2852,68 @@ void show_wifi_menu() {
         }
     }, LV_EVENT_CLICKED, NULL);
 
+    lv_obj_t * scanning_lbl = lv_label_create(wifi_list_modal);
+    lv_label_set_text(scanning_lbl, "Scanning for Wi-Fi networks...\nPlease wait...");
+    lv_obj_set_style_text_align(scanning_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(scanning_lbl, LV_PCT(100));
+
     lv_obj_t * list = lv_list_create(wifi_list_modal);
     lv_obj_remove_flag(list, LV_OBJ_FLAG_SCROLL_ELASTIC); // Disable e-ink scroll animations
     lv_obj_remove_flag(list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_size(list, LV_PCT(100), LV_PCT(80));
     lv_obj_set_style_bg_color(list, lv_color_white(), 0);
     lv_obj_set_style_border_width(list, 1, 0);
+    lv_obj_add_flag(list, LV_OBJ_FLAG_HIDDEN); // Hide it initially until scan finishes
 
-    std::vector<std::string> ssids;
+    // Start background thread to scan for WiFi
+    std::thread([list, scanning_lbl]() {
+        std::vector<std::string> ssids;
 #ifndef _WIN32
-    FILE* fp = popen("nmcli -t -f SSID dev wifi | sort | uniq", "r");
-    if(fp) {
-        char buffer[256];
-        while(fgets(buffer, sizeof(buffer), fp) != nullptr) {
-            std::string line(buffer);
-            if(!line.empty() && line.back() == '\n') line.pop_back();
-            if(!line.empty()) ssids.push_back(line);
+        FILE* fp = popen("nmcli -t -f SSID dev wifi | sort | uniq", "r");
+        if(fp) {
+            char buffer[256];
+            while(fgets(buffer, sizeof(buffer), fp) != nullptr) {
+                std::string line(buffer);
+                if(!line.empty() && line.back() == '\n') line.pop_back();
+                if(!line.empty()) ssids.push_back(line);
+            }
+            pclose(fp);
         }
-        pclose(fp);
-    }
 #else
-    ssids = {"Simulated_Network_1", "Simulated_Network_2", "Guest_WiFi"};
+        // Simulation delay on Windows
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+        ssids = {"Simulated_Network_1", "Simulated_Network_2", "Guest_WiFi"};
 #endif
 
-    for(const auto& ssid : ssids) {
-        lv_obj_t * btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, ssid.c_str());
-        lv_obj_remove_style_all(btn);
-        lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_text_color(btn, lv_color_black(), 0);
-        lv_obj_set_style_pad_all(btn, 10, 0);
+        auto* res = new WifiScanResult{std::move(ssids), list, scanning_lbl};
         
-        lv_obj_add_event_cb(btn, wifi_ssid_clicked_cb, LV_EVENT_CLICKED, NULL);
-    }
+        lvgl_mutex.lock();
+        lv_async_call([](void* data) {
+            auto* r = (WifiScanResult*)data;
+            if (wifi_list_modal) {
+                // Delete scanning label
+                if (r->scanning_lbl) {
+                    lv_obj_del(r->scanning_lbl);
+                }
+                // Show list
+                lv_obj_clear_flag(r->list, LV_OBJ_FLAG_HIDDEN);
+                
+                // Populate list
+                for(const auto& ssid : r->ssids) {
+                    lv_obj_t * btn = lv_list_add_btn(r->list, LV_SYMBOL_WIFI, ssid.c_str());
+                    lv_obj_remove_style_all(btn);
+                    lv_obj_set_style_bg_color(btn, lv_color_white(), 0);
+                    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+                    lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+                    lv_obj_set_style_pad_all(btn, 10, 0);
+                    
+                    lv_obj_add_event_cb(btn, wifi_ssid_clicked_cb, LV_EVENT_CLICKED, NULL);
+                }
+                
+                lv_obj_invalidate(wifi_list_modal);
+            }
+            delete r;
+        }, res);
+        lvgl_mutex.unlock();
+    }).detach();
 }

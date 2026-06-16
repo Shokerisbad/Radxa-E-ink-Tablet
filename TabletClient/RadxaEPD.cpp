@@ -33,7 +33,8 @@ bool g_dark_mode = false;
 
 RadxaEPD::RadxaEPD()
     : spi_fd(-1), line_cs(nullptr), line_dc(nullptr),
-      line_rst(nullptr), line_busy(nullptr), first_refresh(true) {
+      line_rst(nullptr), line_busy(nullptr), first_refresh(true),
+      partial_refresh_count(0) {
   g_epd_instance = this;
 }
 
@@ -327,16 +328,14 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
   int w = area->x2 - area->x1 + 1;
   int h = area->y2 - area->y1 + 1;
 
-  static int partial_refresh_count = 0;
-
   // Decide if we should do a full refresh or partial refresh
   // We allow full screen partial refreshes for smooth page turning.
   // Force a full refresh every 6 updates to clear E-ink ghosting.
   bool is_full = g_epd_instance->first_refresh;
   
-  if (partial_refresh_count >= 5) {
+  if (g_epd_instance->partial_refresh_count >= 5) {
       is_full = true;
-      partial_refresh_count = 0;
+      g_epd_instance->partial_refresh_count = 0;
   }
 
   if (is_full) {
@@ -513,7 +512,7 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
             std::cout << "Refreshing display (PARTIAL BATCHED: x=" << s_min_x << ", y=" << s_min_y
                       << ", w=" << final_w << ", h=" << final_h << ")..." << std::endl;
             g_epd_instance->refresh_partial(s_min_x, s_min_y, final_buf.data(), final_w, final_h);
-            partial_refresh_count++; // Increment only when we physically update the E-ink panel
+            g_epd_instance->partial_refresh_count++; // Increment only when we physically update the E-ink panel
         }
         
         s_min_x = 800; s_min_y = 480; s_max_x = -1; s_max_y = -1;
@@ -527,17 +526,22 @@ void RadxaEPD::flush_cb(lv_display_t *disp, const lv_area_t *area,
 // System Status Checkers
 
 int RadxaEPD::get_battery_percentage() {
-  // Basic polling of Linux sysfs for battery
-  std::ifstream file(
-      "/sys/class/power_supply/axp20x-battery/capacity"); // Adjust to radxa's
-                                                          // actual PMIC battery
-                                                          // path
-  if (file.is_open()) {
-    int capacity = 100;
-    file >> capacity;
-    return capacity;
+  const std::string paths[] = {
+      "/sys/class/power_supply/battery/capacity",
+      "/sys/class/power_supply/axp20x-battery/capacity",
+      "/sys/class/power_supply/rk-bat/capacity"
+  };
+  for (const auto& path : paths) {
+    std::ifstream file(path);
+    if (file.is_open()) {
+      int capacity = -1;
+      file >> capacity;
+      if (capacity >= 0 && capacity <= 100) {
+        return capacity;
+      }
+    }
   }
-  return -1; // Unknown
+  return -1; // Unknown / Mains / unsupported PMIC
 }
 
 bool RadxaEPD::is_wifi_connected() {

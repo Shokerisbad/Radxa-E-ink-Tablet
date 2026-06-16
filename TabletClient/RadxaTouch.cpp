@@ -245,3 +245,19 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
 void RadxaTouch::ignore_touches_for(int ms) {
     ignore_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
 }
+
+void RadxaTouch::prepare_for_sleep() {
+#ifndef _WIN32
+    if (line_int) {
+        gpiod_line_release(line_int);
+    }
+#endif
+}
+
+void RadxaTouch::resume_from_sleep() {
+#ifndef _WIN32
+    if (line_int) {
+        gpiod_line_request_input(line_int, "touch_int_in");
+    }
+#endif
+}

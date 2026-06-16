@@ -560,8 +560,9 @@ static void update_reader_ui() {
   // Parse for [IMG:...] marker
   size_t img_start = text.find("[IMG:");
   if (img_start != std::string::npos) {
-    size_t img_end = text.find("]", img_start);
+    size_t img_end = text.find(".bmp]", img_start);
     if (img_end != std::string::npos) {
+      img_end += 4; // Point exactly to ']'
       static std::string current_img_path;
       current_img_path =
           text.substr(img_start + 5, img_end - (img_start + 5));
@@ -1399,25 +1400,38 @@ static void global_gesture_cb(lv_event_t *e) {
   }
 }
 
+// Map physical pin names to Rockchip sysfs numbers
+// Formula: Bank * 32 + (Group * 8) + Pin
+static int get_sysfs_gpio_number(const std::string& pin_name) {
+    if (pin_name == "PIN_35") return 97; // GPIO3_A1 -> 3*32 + 0*8 + 1 = 97
+    if (pin_name == "PIN_37") return 98; // GPIO3_A2 -> 3*32 + 0*8 + 2 = 98
+    return -1;
+}
+
 static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
-    // SLEEP TEMPORARILY DISABLED
-    /*
+    
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
-    if (inactive_time > 10000) {
-        std::cout << "Inactivity timeout reached! Suspending system..." << std::endl;
+    if (inactive_time > 20000) { // 20 seconds of inactivity
+        std::cout << "Inactivity timeout reached (20s)! Suspending system..." << std::endl;
         
         int gpio_num = get_sysfs_gpio_number(TOUCH_PIN_INT);
         if (gpio_num != -1) {
             std::string sysfs_base = "/sys/class/gpio/gpio" + std::to_string(gpio_num);
-            std::string export_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/export";
+            
+            // Release libgpiod hold so sysfs can export it
+            if (g_touch_instance) {
+                g_touch_instance->prepare_for_sleep();
+            }
+
+            // Export the GPIO, redirecting error to null in case it's already exported
+            std::string export_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/export 2>/dev/null";
             system(export_cmd.c_str());
             
-            std::string dir_cmd = "echo in > " + sysfs_base + "/direction";
-            system(dir_cmd.c_str());
-            
-            std::string edge_cmd = "echo falling > " + sysfs_base + "/edge";
-            system(edge_cmd.c_str());
+            // Configure trigger edge and enable system wakeup
+            system(("echo in > " + sysfs_base + "/direction").c_str());
+            system(("echo falling > " + sysfs_base + "/edge").c_str());
+            system(("echo enabled > " + sysfs_base + "/power/wakeup").c_str());
         }
         
         lv_disp_trig_activity(NULL); 
@@ -1426,14 +1440,26 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
             g_epd_instance->sleep();
         }
 
+        // Suspend to idle (keeps GPIO3 powered and INT pin active)
         system("echo freeze > /sys/power/state");
+
+        // --- System is now asleep and will resume here after touch is detected ---
 
         if (g_epd_instance) {
             g_epd_instance->wake();
             lv_obj_invalidate(lv_scr_act());
         }
+
+        // Cleanup sysfs and re-acquire libgpiod hold
+        if (gpio_num != -1) {
+            std::string unexport_cmd = "echo " + std::to_string(gpio_num) + " > /sys/class/gpio/unexport 2>/dev/null";
+            system(unexport_cmd.c_str());
+
+            if (g_touch_instance) {
+                g_touch_instance->resume_from_sleep();
+            }
+        }
     }
-    */
 }
 
 

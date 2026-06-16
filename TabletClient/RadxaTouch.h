@@ -35,6 +35,9 @@ public:
 
     void ignore_touches_for(int ms);
 
+    void prepare_for_sleep();
+    void resume_from_sleep();
+
 private:
     bool init_gpio();
     bool init_i2c();

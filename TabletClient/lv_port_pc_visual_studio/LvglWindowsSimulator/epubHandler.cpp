@@ -63,7 +63,7 @@ std::string EpubHandler::readZipFile(zip_t *z, const std::string &path) {
   if (!zf)
     return "";
   std::string content;
-  char buf[1024];
+  char buf[65536];
   while (auto bytes_read = zip_fread(zf, buf, sizeof(buf))) {
     if (bytes_read < 0)
       break;
@@ -404,8 +404,9 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
 
       std::string filename = std::filesystem::path(sname).filename().string();
       std::string out_path = book_img_dir + filename;
+      std::string bmp_path = std::filesystem::path(out_path).replace_extension(".bmp").string();
 
-      if (!std::filesystem::exists(out_path)) {
+      if (!std::filesystem::exists(bmp_path)) {
         std::string img_content = readZipFile(z, sname);
         std::ofstream out(out_path, std::ios::binary);
         out.write(img_content.data(), img_content.size());
@@ -448,9 +449,6 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
             }
           }
 
-          std::string bmp_path = std::filesystem::path(out_path)
-                                     .replace_extension(".bmp")
-                                     .string();
           write_bmp(bmp_path.c_str(), new_w, new_h, 3, new_data);
           delete[] new_data;
           stbi_image_free(img_data);
@@ -624,8 +622,9 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
       std::map<size_t, size_t> old_to_new;
       size_t p = 0;
       while ((p = full_text.find("[IMG:", p)) != std::string::npos) {
-          size_t end_p = full_text.find("]", p);
+          size_t end_p = full_text.find(".bmp]", p);
           if (end_p != std::string::npos) {
+              end_p += 4; // Point exactly to ']'
               old_to_new[p] = only_images.length();
               only_images += full_text.substr(p, end_p - p + 1) + "\n";
               p = end_p + 1;

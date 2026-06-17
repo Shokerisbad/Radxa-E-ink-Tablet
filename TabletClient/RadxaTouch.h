@@ -37,6 +37,8 @@ public:
 
     void prepare_for_sleep();
     void resume_from_sleep();
+    
+    bool is_hardware_touched();
 
 private:
     bool init_gpio();

@@ -288,3 +288,13 @@ void RadxaTouch::resume_from_sleep() {
     }
 #endif
 }
+
+bool RadxaTouch::is_hardware_touched() {
+#ifndef _WIN32
+    if (line_int) {
+        // Return true if the INT pin is LOW (asserted)
+        return gpiod_line_get_value(line_int) == 0;
+    }
+#endif
+    return false;
+}

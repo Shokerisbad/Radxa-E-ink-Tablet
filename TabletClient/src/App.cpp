@@ -1499,37 +1499,21 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
     if (inactive_time > 300000) { // 5 minutes of inactivity
-        std::cout << "Inactivity timeout reached (5 mins)! Handoff to Hardware Wakeup & Suspending OS..." << std::endl;
+        std::cout << "Inactivity timeout reached! Entering Soft Sleep (Screen Off & CPU Idle)..." << std::endl;
         
         if (g_epd_instance) {
             g_epd_instance->sleep();
         }
         
-        // The Handoff: Release Pin 35 back to the kernel
-        if (g_touch_instance) {
-            g_touch_instance->prepare_for_sleep();
+        // Wait for hardware touch
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (g_touch_instance && g_touch_instance->is_hardware_touched()) {
+                break;
+            }
         }
 
-        // Dynamically configure the pin as a wakeup source via sysfs
-        // GPIO3_A4 -> (3*32) + (0*8) + 4 = 100
-        system("echo 100 > /sys/class/gpio/export 2>/dev/null");
-        system("echo in > /sys/class/gpio/gpio100/direction 2>/dev/null");
-        system("echo falling > /sys/class/gpio/gpio100/edge 2>/dev/null");
-        system("echo enabled > /sys/class/gpio/gpio100/power/wakeup 2>/dev/null");
-        system("echo enabled > /sys/class/gpio/gpio100/device/power/wakeup 2>/dev/null");
-
-        // The Sleep: We use systemd's suspend to properly handle hardware drivers
-        // and avoid kernel lockups that happen with a raw 'echo freeze'
-        system("systemctl suspend");
-
-        // --- C++ Takes Back Control ---
-        
-        // Cleanup sysfs so libgpiod can take it back
-        system("echo 100 > /sys/class/gpio/unexport 2>/dev/null");
-
-        if (g_touch_instance) {
-            g_touch_instance->resume_from_sleep(); // Re-request Pin 35
-        }
+        std::cout << "Waking up from Soft Sleep..." << std::endl;
 
         if (g_epd_instance) {
             g_epd_instance->wake();

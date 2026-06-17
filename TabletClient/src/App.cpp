@@ -1525,8 +1525,8 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
         std::cout << "Waking up from Soft Sleep..." << std::endl;
 
         // --- POWER MANAGEMENT (WAKE) ---
-        std::cout << "[Power] Unthrottling CPU to 'schedutil' governor..." << std::endl;
-        system("echo schedutil > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null");
+        std::cout << "[Power] Unthrottling CPU to 'ondemand' governor..." << std::endl;
+        system("echo ondemand > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null");
         std::cout << "[Power] Unblocking Wi-Fi/Bluetooth..." << std::endl;
         system("rfkill unblock all 2>/dev/null");
 

@@ -32,6 +32,10 @@ RadxaTouch::~RadxaTouch() {
 
 bool RadxaTouch::init_gpio() {
 #ifndef _WIN32
+    // CRITICAL: If the app crashed during sleep, sysfs might still own the pin.
+    // We must forcefully unexport it so libgpiod can successfully request it.
+    system("echo 100 > /sys/class/gpio/unexport 2>/dev/null");
+
     line_rst = gpiod_line_find(TOUCH_PIN_RST);
     line_int = gpiod_line_find(TOUCH_PIN_INT);
 
@@ -44,7 +48,10 @@ bool RadxaTouch::init_gpio() {
     gpiod_line_request_output(line_rst, "touch_rst", 1);
 
     // INT starts as input — we only read it, never drive it initially
-    gpiod_line_request_input(line_int, "touch_int");
+    if (gpiod_line_request_input(line_int, "touch_int") < 0) {
+        std::cerr << "CRITICAL ERROR: Failed to request INT line. Is the DTO still active?" << std::endl;
+        return false;
+    }
 #endif
     return true;
 }

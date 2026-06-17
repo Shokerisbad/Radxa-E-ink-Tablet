@@ -40,6 +40,8 @@ public:
   bool hasNextPage() const;
   bool hasPrevPage() const;
 
+  bool isManga() const;
+
   void repaginate(int chars_per_line, int line_height);
 
 private:
@@ -48,6 +50,7 @@ private:
   std::vector<std::string> m_pages;
   int m_currentPage;
   bool m_isLoaded;
+  bool m_isManga;
   std::vector<EpubChapter> m_toc;
 
   std::string readZipFile(struct zip *z, const std::string &filepath);

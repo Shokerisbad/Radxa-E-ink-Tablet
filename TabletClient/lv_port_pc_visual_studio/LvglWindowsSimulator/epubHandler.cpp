@@ -54,7 +54,7 @@ static void write_bmp(const char *filename, int w, int h, int comp,
 }
 
 // Basic EPUB Handler stub for the LVGL Simulator
-EpubHandler::EpubHandler() : m_isLoaded(false), m_currentPage(0) {}
+EpubHandler::EpubHandler() : m_isLoaded(false), m_currentPage(0), m_isManga(false) {}
 
 EpubHandler::~EpubHandler() {}
 
@@ -618,6 +618,7 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
   // Manga detection: If the epub has many images and very little text,
   // we assume it's a manga/comic and strip out all text to prevent useless title pages.
   if (total_img_count > 5 && full_text.length() < total_img_count * 200) {
+      m_isManga = true;
       std::string only_images;
       std::map<size_t, size_t> old_to_new;
       size_t p = 0;
@@ -728,6 +729,8 @@ bool EpubHandler::hasNextPage() const {
 }
 
 bool EpubHandler::hasPrevPage() const { return m_currentPage > 0; }
+
+bool EpubHandler::isManga() const { return m_isManga; }
 
 bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_out, std::string& author_out, std::string& genre_out, std::string& summary_out) {
   if (!std::filesystem::exists(filepath)) return false;

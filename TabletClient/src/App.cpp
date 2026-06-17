@@ -958,8 +958,6 @@ static void font_size_toggle_cb(lv_event_t * e) {
     save_reading_state();
 }
 
-}
-
 static void image_scale_toggle_cb(lv_event_t * e) {
     static auto last_toggle = std::chrono::steady_clock::now();
     auto now = std::chrono::steady_clock::now();

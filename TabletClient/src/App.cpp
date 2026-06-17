@@ -1499,9 +1499,18 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
     if (inactive_time > 300000) { // 5 minutes of inactivity
-        std::cout << "Inactivity timeout reached! Entering Soft Sleep (Screen Off & CPU Idle)..." << std::endl;
+        std::cout << "Inactivity timeout reached! Clearing to white and entering Soft Sleep..." << std::endl;
         
+        // --- POWER MANAGEMENT (SLEEP) ---
+        std::cout << "[Power] Throttling CPU to 'powersave' governor..." << std::endl;
+        system("echo powersave > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null");
+        std::cout << "[Power] Blocking Wi-Fi/Bluetooth to save battery..." << std::endl;
+        system("rfkill block all 2>/dev/null");
+
         if (g_epd_instance) {
+            // Fill screen with white (0xFF) to prevent ghosting
+            std::vector<uint8_t> white_buf(480 * 800 / 8, 0xFF);
+            g_epd_instance->refresh_full(white_buf.data());
             g_epd_instance->sleep();
         }
         
@@ -1515,8 +1524,15 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
 
         std::cout << "Waking up from Soft Sleep..." << std::endl;
 
+        // --- POWER MANAGEMENT (WAKE) ---
+        std::cout << "[Power] Unthrottling CPU to 'schedutil' governor..." << std::endl;
+        system("echo schedutil > /sys/devices/system/cpu/cpufreq/policy0/scaling_governor 2>/dev/null");
+        std::cout << "[Power] Unblocking Wi-Fi/Bluetooth..." << std::endl;
+        system("rfkill unblock all 2>/dev/null");
+
         if (g_epd_instance) {
             g_epd_instance->wake();
+            g_epd_instance->force_full_refresh(); // Guarantee the next redraw is clean and sharp
             lv_obj_invalidate(lv_scr_act());
         }
         

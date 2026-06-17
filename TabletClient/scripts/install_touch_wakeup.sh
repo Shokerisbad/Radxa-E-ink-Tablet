@@ -1,13 +1,13 @@
 #!/bin/bash
 # install_touch_wakeup.sh
-# Automates the compilation and installation of the GT911 hardware wake overlay
+# Compiles the GT911 hardware wake overlay using dtc
 
-echo "Compiling and installing GT911 Touch Wake Overlay for RK3566..."
+echo "Compiling GT911 Touch Wake Overlay for RK3566..."
 
-if ! command -v armbian-add-overlay &> /dev/null
+if ! command -v dtc &> /dev/null
 then
-    echo "[!] Error: 'armbian-add-overlay' not found. Ensure you are running Radxa OS or Armbian."
-    echo "[!] Alternatively, use 'sudo rsetup' or compile manually using dtc."
+    echo "[!] Error: 'dtc' (Device Tree Compiler) not found."
+    echo "[!] Please install it first by running: sudo apt install device-tree-compiler"
     exit 1
 fi
 
@@ -16,19 +16,33 @@ if [ ! -f "wake_pin35.dts" ]; then
     exit 1
 fi
 
-# Run armbian-add-overlay
-sudo armbian-add-overlay wake_pin35.dts
+# Compile the DTS into a DTBO (Device Tree Blob Overlay)
+# The -@ flag is required to allow symbols/overlays
+# The -O dtb flag specifies the output format
+dtc -@ -I dts -O dtb -o wake_pin35.dtbo wake_pin35.dts
 
 if [ $? -eq 0 ]; then
-    echo "[OK] Overlay installed successfully!"
-    echo "[!] IMPORTANT: You must reboot the system for the overlay to take effect."
-    read -p "Would you like to reboot now? (y/n): " choice
-    if [ "$choice" == "y" ]; then
-        sudo reboot
-    else
-        echo "Please reboot manually later."
-    fi
+    echo "[OK] Successfully compiled wake_pin35.dtbo!"
+    echo ""
+    echo "========================================================="
+    echo " NEXT STEPS FOR RADXA OS BOOKWORM:"
+    echo "========================================================="
+    echo "1. Copy the compiled overlay to the boot partition:"
+    echo "   sudo cp wake_pin35.dtbo /boot/dtb/rockchip/overlay/"
+    echo "   (If that folder doesn't exist, try: /boot/firmware/overlays/)"
+    echo ""
+    echo "2. Enable the overlay using Radxa's configuration tool:"
+    echo "   sudo rsetup"
+    echo "   -> Go to 'Overlays' -> 'Manage overlays' -> find and enable 'wake_pin35'"
+    echo ""
+    echo "   OR manually add it to your boot config:"
+    echo "   Open /boot/extlinux/extlinux.conf (or /boot/uEnv.txt)"
+    echo "   Add 'wake_pin35' to the 'overlays=' line."
+    echo ""
+    echo "3. Reboot the system:"
+    echo "   sudo reboot"
+    echo "========================================================="
 else
-    echo "[!] Failed to apply overlay."
+    echo "[!] Failed to compile overlay."
     exit 1
 fi

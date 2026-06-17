@@ -1455,9 +1455,9 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
         system("echo enabled > /sys/class/gpio/gpio100/power/wakeup 2>/dev/null");
         system("echo enabled > /sys/class/gpio/gpio100/device/power/wakeup 2>/dev/null");
 
-        // The Freeze: Suspend to Idle. 
-        // We use 'freeze' instead of 'mem' so GPIO3 doesn't lose power.
-        system("echo freeze > /sys/power/state");
+        // The Sleep: We use systemd's suspend to properly handle hardware drivers
+        // and avoid kernel lockups that happen with a raw 'echo freeze'
+        system("systemctl suspend");
 
         // --- C++ Takes Back Control ---
         

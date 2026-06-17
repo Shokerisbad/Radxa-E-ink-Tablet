@@ -179,8 +179,10 @@ void RadxaTouch::read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
     if (!g_touch_instance) return;
 
 #ifndef _WIN32
-    // Check hardware INT pin first to prevent I2C flooding
-    if (gpiod_line_get_value(g_touch_instance->line_int) != 0) { 
+    // Check hardware INT pin first to prevent I2C flooding.
+    // If the line is 1 (high), it is idle, so return early. 
+    // If it is 0 (low/asserted) or -1 (error), proceed to read I2C.
+    if (gpiod_line_get_value(g_touch_instance->line_int) == 1) { 
         data->point.x = g_touch_instance->last_x;
         data->point.y = g_touch_instance->last_y;
         data->state = g_touch_instance->is_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
@@ -268,7 +270,21 @@ void RadxaTouch::prepare_for_sleep() {
 void RadxaTouch::resume_from_sleep() {
 #ifndef _WIN32
     if (line_int) {
-        gpiod_line_request_input(line_int, "touch_int_in");
+        // Retry requesting the line since sysfs unexport can be asynchronous and take a moment
+        int retries = 10;
+        bool success = false;
+        while (retries > 0) {
+            if (gpiod_line_request_input(line_int, "touch_int_in") == 0) {
+                std::cout << "Successfully re-acquired touch INT line after sleep." << std::endl;
+                success = true;
+                break;
+            }
+            retries--;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (!success) {
+            std::cerr << "CRITICAL ERROR: Failed to re-acquire touch INT line after sleep!" << std::endl;
+        }
     }
 #endif
 }

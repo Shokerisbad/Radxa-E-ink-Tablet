@@ -259,6 +259,9 @@ void RadxaTouch::ignore_touches_for(int ms) {
 
 void RadxaTouch::prepare_for_sleep() {
 #ifndef _WIN32
+    // Clear buffer status register (0x814E) so GT911 is primed to generate new INT pulses
+    write_reg(0x814E, 0x00);
+
     if (line_int) {
         gpiod_line_release(line_int);
     }

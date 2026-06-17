@@ -27,3 +27,11 @@ struct TypographySettings {
 extern std::vector<TypographySettings> g_font_options;
 extern int g_current_font_index;
 
+struct ImageScaleSettings {
+    int scale;
+    std::string name;
+};
+
+extern std::vector<ImageScaleSettings> g_image_scale_options;
+extern int g_current_image_scale_index;
+

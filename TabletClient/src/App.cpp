@@ -129,6 +129,13 @@ std::vector<TypographySettings> g_font_options = {
 };
 int g_current_font_index = 0;
 
+std::vector<ImageScaleSettings> g_image_scale_options = {
+    {100, "Original (100%)"},
+    {75,  "Medium (75%)"},
+    {50,  "Small (50%)"}
+};
+int g_current_image_scale_index = 0;
+
 static void apply_typography() {
     if (reader_content_label && g_current_font_index >= 0 && g_current_font_index < g_font_options.size()) {
         lv_obj_set_style_text_font(reader_content_label, g_font_options[g_current_font_index].font, 0);
@@ -163,6 +170,7 @@ static void load_reading_state() {
                 }
             }
             if (j.contains("font_index")) g_current_font_index = j["font_index"];
+            if (j.contains("image_scale_index")) g_current_image_scale_index = j["image_scale_index"];
         } catch (...) {}
     }
 }
@@ -176,6 +184,7 @@ static void save_reading_state() {
         j["book_pages"] = g_reading_state.book_pages;
         j["book_total_pages"] = g_reading_state.book_total_pages;
         j["font_index"] = g_current_font_index;
+        j["image_scale_index"] = g_current_image_scale_index;
         std::ofstream f(path);
         f << j.dump(4);
     } catch (...) {}
@@ -570,7 +579,65 @@ static void update_reader_ui() {
       text.erase(img_start, img_end - img_start + 1);
 
       if (reader_img) {
-        lv_image_set_src(reader_img, current_img_path.c_str());
+        int scale = g_image_scale_options[g_current_image_scale_index].scale;
+        if (scale == 100) {
+            lv_image_set_src(reader_img, current_img_path.c_str());
+        } else {
+            // Software resizer
+            int w, h, c;
+            uint8_t* img = stbi_load(current_img_path.c_str(), &w, &h, &c, 3);
+            if (img) {
+                int new_w = (w * scale) / 100;
+                int new_h = (h * scale) / 100;
+                if (new_w > 0 && new_h > 0) {
+                    uint8_t* scaled = new uint8_t[new_w * new_h * 3];
+                    for (int y = 0; y < new_h; y++) {
+                        for (int x = 0; x < new_w; x++) {
+                            int orig_x = (x * 100) / scale;
+                            int orig_y = (y * 100) / scale;
+                            if (orig_x >= w) orig_x = w - 1;
+                            if (orig_y >= h) orig_y = h - 1;
+                            int orig_i = (orig_y * w + orig_x) * 3;
+                            int new_i = (y * new_w + x) * 3;
+                            scaled[new_i] = img[orig_i];
+                            scaled[new_i+1] = img[orig_i+1];
+                            scaled[new_i+2] = img[orig_i+2];
+                        }
+                    }
+                    
+                    std::string out_path = "/tmp/scaled_img.bmp";
+                    FILE* f = fopen(out_path.c_str(), "wb");
+                    if (f) {
+                        int row_padded = (new_w * 3 + 3) & (~3);
+                        uint32_t filesize = 54 + new_h * row_padded;
+                        uint8_t file_header[14] = {'B','M', 0,0,0,0, 0,0, 0,0, 54,0,0,0};
+                        uint8_t info_header[40] = {40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0, 24,0};
+                        file_header[2] = (uint8_t)(filesize); file_header[3] = (uint8_t)(filesize>>8);
+                        file_header[4] = (uint8_t)(filesize>>16); file_header[5] = (uint8_t)(filesize>>24);
+                        info_header[4] = (uint8_t)(new_w); info_header[5] = (uint8_t)(new_w>>8);
+                        info_header[6] = (uint8_t)(new_w>>16); info_header[7] = (uint8_t)(new_w>>24);
+                        info_header[8] = (uint8_t)(new_h); info_header[9] = (uint8_t)(new_h>>8);
+                        info_header[10] = (uint8_t)(new_h>>16); info_header[11] = (uint8_t)(new_h>>24);
+                        fwrite(file_header, 1, 14, f);
+                        fwrite(info_header, 1, 40, f);
+                        uint8_t padding[3] = {0,0,0};
+                        for(int y=new_h-1; y>=0; y--) {
+                            for(int x=0; x<new_w; x++) {
+                                int i = (y * new_w + x) * 3;
+                                uint8_t bgr[3] = {scaled[i+2], scaled[i+1], scaled[i]};
+                                fwrite(bgr, 1, 3, f);
+                            }
+                            fwrite(padding, 1, row_padded - new_w*3, f);
+                        }
+                        fclose(f);
+                    }
+                    delete[] scaled;
+                    
+                    lv_image_set_src(reader_img, out_path.c_str());
+                }
+                stbi_image_free(img);
+            }
+        }
         lv_obj_clear_flag(reader_img, LV_OBJ_FLAG_HIDDEN);
       }
     }
@@ -891,6 +958,26 @@ static void font_size_toggle_cb(lv_event_t * e) {
     save_reading_state();
 }
 
+}
+
+static void image_scale_toggle_cb(lv_event_t * e) {
+    static auto last_toggle = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_toggle).count() < 300) return;
+    last_toggle = now;
+
+    lv_obj_t * row = (lv_obj_t *)lv_event_get_current_target(e);
+    g_current_image_scale_index = (g_current_image_scale_index + 1) % g_image_scale_options.size();
+    
+    lv_obj_t * subtitle = (lv_obj_t *)lv_obj_get_child(row, 2);
+    if (subtitle) {
+        lv_label_set_text(subtitle, g_image_scale_options[g_current_image_scale_index].name.c_str());
+    }
+
+    if (is_epub_active && current_epub) {
+        update_reader_ui();
+    }
+    save_reading_state();
 }
 
 static void dark_mode_toggle_cb(lv_event_t * e) {
@@ -2016,7 +2103,8 @@ void build_tablet_ui() {
   lv_obj_t *row_font = create_menu_row(settings_cont, LV_SYMBOL_EDIT, "Font Size", g_font_options[g_current_font_index].name.c_str());
   lv_obj_add_event_cb(row_font, font_size_toggle_cb, LV_EVENT_CLICKED, NULL);
 
-
+  lv_obj_t *row_img = create_menu_row(settings_cont, LV_SYMBOL_IMAGE, "Image Scale", g_image_scale_options[g_current_image_scale_index].name.c_str());
+  lv_obj_add_event_cb(row_img, image_scale_toggle_cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *row_dark = create_menu_row(settings_cont, LV_SYMBOL_ADJUST, "Dark Mode", "Toggle inverted rendering");
   lv_obj_add_event_cb(row_dark, dark_mode_toggle_cb, LV_EVENT_CLICKED, NULL);

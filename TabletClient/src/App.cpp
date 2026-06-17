@@ -1435,8 +1435,8 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
-    if (inactive_time > 90000) { // 90 seconds of inactivity
-        std::cout << "Inactivity timeout reached (90s)! Handoff to Hardware Wakeup & Suspending OS..." << std::endl;
+    if (inactive_time > 300000) { // 5 minutes of inactivity
+        std::cout << "Inactivity timeout reached (5 mins)! Handoff to Hardware Wakeup & Suspending OS..." << std::endl;
         
         if (g_epd_instance) {
             g_epd_instance->sleep();

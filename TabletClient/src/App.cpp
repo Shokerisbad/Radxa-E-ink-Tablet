@@ -1435,24 +1435,34 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
-    if (inactive_time > 20000) { // 20 seconds of inactivity
-        std::cout << "Inactivity timeout reached (20s)! Handoff to Hardware Wakeup & Suspending OS..." << std::endl;
+    if (inactive_time > 30000) { // 30 seconds of inactivity
+        std::cout << "Inactivity timeout reached (30s)! Handoff to Hardware Wakeup & Suspending OS..." << std::endl;
         
         if (g_epd_instance) {
             g_epd_instance->sleep();
         }
         
-        // The Handoff: Release Pin 35 back to the kernel so PMU can watch it
+        // The Handoff: Release Pin 35 back to the kernel
         if (g_touch_instance) {
             g_touch_instance->prepare_for_sleep();
         }
 
-        // The Freeze: Suspend the OS to RAM. The CPU literally stops executing right here.
-        // It will only resume when the PMU hardware detects a drop on Pin 35.
-        system("echo mem > /sys/power/state");
+        // Dynamically configure the pin as a wakeup source via sysfs
+        // GPIO3_A4 -> (3*32) + (0*8) + 4 = 100
+        system("echo 100 > /sys/class/gpio/export 2>/dev/null");
+        system("echo in > /sys/class/gpio/gpio100/direction 2>/dev/null");
+        system("echo falling > /sys/class/gpio/gpio100/edge 2>/dev/null");
+        system("echo enabled > /sys/class/gpio/gpio100/power/wakeup 2>/dev/null");
+        system("echo enabled > /sys/class/gpio/gpio100/device/power/wakeup 2>/dev/null");
+
+        // The Freeze: Suspend to Idle. 
+        // We use 'freeze' instead of 'mem' so GPIO3 doesn't lose power.
+        system("echo freeze > /sys/power/state");
 
         // --- C++ Takes Back Control ---
-        // We just woke up!
+        
+        // Cleanup sysfs so libgpiod can take it back
+        system("echo 100 > /sys/class/gpio/unexport 2>/dev/null");
 
         if (g_touch_instance) {
             g_touch_instance->resume_from_sleep(); // Re-request Pin 35
@@ -1463,7 +1473,7 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
             lv_obj_invalidate(lv_scr_act());
         }
         
-        lv_disp_trig_activity(NULL); 
+        lv_disp_trig_activity(NULL);  
     }
 }
 

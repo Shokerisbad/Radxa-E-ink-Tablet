@@ -1498,7 +1498,7 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
-    if (inactive_time > 20000) { // 20 seconds of inactivity (reduced for fast testing)
+    if (inactive_time > 300000) { // 5 minutes of inactivity
         std::cout << "Inactivity timeout reached! Clearing to white and entering Soft Sleep..." << std::endl;
         
         // --- POWER MANAGEMENT (SLEEP) ---

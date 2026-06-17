@@ -129,6 +129,13 @@ std::vector<TypographySettings> g_font_options = {
 };
 int g_current_font_index = 0;
 
+std::vector<ImageScaleSettings> g_image_scale_options = {
+    {256, "Original (100%)"},
+    {192, "Medium (75%)"},
+    {128, "Small (50%)"}
+};
+int g_current_image_scale_index = 0;
+
 static void apply_typography() {
     if (reader_content_label && g_current_font_index >= 0 && g_current_font_index < g_font_options.size()) {
         lv_obj_set_style_text_font(reader_content_label, g_font_options[g_current_font_index].font, 0);
@@ -162,6 +169,8 @@ static void load_reading_state() {
                     g_reading_state.book_total_pages[key] = val;
                 }
             }
+            if (j.contains("font_index")) g_current_font_index = j["font_index"];
+            if (j.contains("image_scale_index")) g_current_image_scale_index = j["image_scale_index"];
         } catch (...) {}
     }
 }
@@ -175,6 +184,7 @@ static void save_reading_state() {
         j["book_pages"] = g_reading_state.book_pages;
         j["book_total_pages"] = g_reading_state.book_total_pages;
         j["font_index"] = g_current_font_index;
+        j["image_scale_index"] = g_current_image_scale_index;
         std::ofstream f(path);
         f << j.dump(4);
     } catch (...) {}
@@ -570,6 +580,7 @@ static void update_reader_ui() {
 
       if (reader_img) {
         lv_image_set_src(reader_img, current_img_path.c_str());
+        lv_image_set_scale(reader_img, g_image_scale_options[g_current_image_scale_index].scale);
         lv_obj_clear_flag(reader_img, LV_OBJ_FLAG_HIDDEN);
       }
     }
@@ -880,6 +891,26 @@ static void font_size_toggle_cb(lv_event_t * e) {
         g_reading_state.book_total_pages[g_reading_state.last_book_path] = current_epub->getTotalPages();
         update_reader_ui();
         update_status_bar();
+    }
+    save_reading_state();
+}
+
+static void image_scale_toggle_cb(lv_event_t * e) {
+    static auto last_toggle = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_toggle).count() < 300) return;
+    last_toggle = now;
+
+    lv_obj_t * row = (lv_obj_t *)lv_event_get_current_target(e);
+    g_current_image_scale_index = (g_current_image_scale_index + 1) % g_image_scale_options.size();
+    
+    lv_obj_t * subtitle = (lv_obj_t *)lv_obj_get_child(row, 2);
+    if (subtitle) {
+        lv_label_set_text(subtitle, g_image_scale_options[g_current_image_scale_index].name.c_str());
+    }
+
+    if (is_epub_active && current_epub) {
+        update_reader_ui();
     }
     save_reading_state();
 }
@@ -1400,27 +1431,39 @@ static void global_gesture_cb(lv_event_t *e) {
   }
 }
 
-bool g_is_software_sleeping = false;
-
 static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
-    // Don't trigger sleep again if we are already sleeping
-    if (g_is_software_sleeping) return;
-    
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
     if (inactive_time > 20000) { // 20 seconds of inactivity
-        std::cout << "Inactivity timeout reached (20s)! Entering Software Sleep..." << std::endl;
-        
-        g_is_software_sleeping = true;
+        std::cout << "Inactivity timeout reached (20s)! Handoff to Hardware Wakeup & Suspending OS..." << std::endl;
         
         if (g_epd_instance) {
             g_epd_instance->sleep();
         }
         
-        // We do NOT suspend the OS. The CPU will continue running the LVGL loop,
-        // but since the EPD is asleep and LVGL has no active tasks, CPU usage drops.
-        // RadxaTouch::read_cb will detect the next touch and wake the system!
+        // The Handoff: Release Pin 35 back to the kernel so PMU can watch it
+        if (g_touch_instance) {
+            g_touch_instance->prepare_for_sleep();
+        }
+
+        // The Freeze: Suspend the OS to RAM. The CPU literally stops executing right here.
+        // It will only resume when the PMU hardware detects a drop on Pin 35.
+        system("echo mem > /sys/power/state");
+
+        // --- C++ Takes Back Control ---
+        // We just woke up!
+
+        if (g_touch_instance) {
+            g_touch_instance->resume_from_sleep(); // Re-request Pin 35
+        }
+
+        if (g_epd_instance) {
+            g_epd_instance->wake();
+            lv_obj_invalidate(lv_scr_act());
+        }
+        
+        lv_disp_trig_activity(NULL); 
     }
 }
 
@@ -1984,6 +2027,9 @@ void build_tablet_ui() {
 
   lv_obj_t *row_font = create_menu_row(settings_cont, LV_SYMBOL_EDIT, "Font Size", g_font_options[g_current_font_index].name.c_str());
   lv_obj_add_event_cb(row_font, font_size_toggle_cb, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *row_img = create_menu_row(settings_cont, LV_SYMBOL_IMAGE, "Image Scale", g_image_scale_options[g_current_image_scale_index].name.c_str());
+  lv_obj_add_event_cb(row_img, image_scale_toggle_cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *row_dark = create_menu_row(settings_cont, LV_SYMBOL_ADJUST, "Dark Mode", "Toggle inverted rendering");
   lv_obj_add_event_cb(row_dark, dark_mode_toggle_cb, LV_EVENT_CLICKED, NULL);

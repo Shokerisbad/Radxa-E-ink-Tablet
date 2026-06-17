@@ -1,0 +1,33 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    /* Target the RK3566 SoC */
+    compatible = "rockchip,rk3566";
+
+    fragment@0 {
+        /* We are adding a new node to the root of the hardware tree */
+        target-path = "/";
+        __overlay__ {
+            gpio_keys: gpio-keys {
+                /* Bind this to the standard Linux gpio-keys driver */
+                compatible = "gpio-keys";
+                
+                touch_wake {
+                    label = "GT911 Touch Wakeup";
+                    /* 143 is the raw Linux input code for KEY_WAKEUP */
+                    linux,code = <143>; 
+                    
+                    /* Syntax: <Phandle Pin_Number Active_State> */
+                    /* &gpio3 = Bank 3 */
+                    /* 4 = Pin A4 */
+                    /* 1 = Active Low (Use 0 if your GT911 INT pulses HIGH on touch) */
+                    gpios = <&gpio3 4 1>; 
+                    
+                    /* The magic flag that delegates this pin to the PMU during sleep */
+                    wakeup-source;
+                };
+            };
+        };
+    };
+};

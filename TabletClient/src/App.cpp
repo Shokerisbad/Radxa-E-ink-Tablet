@@ -1508,8 +1508,8 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
         system("rfkill block all 2>/dev/null");
 
         if (g_epd_instance) {
-            // Fill screen with white (0xFF) to prevent ghosting
-            std::vector<uint8_t> white_buf(480 * 800 / 8, 0xFF);
+            // Fill screen with white (0x00) to prevent ghosting
+            std::vector<uint8_t> white_buf(480 * 800 / 8, 0x00);
             g_epd_instance->refresh_full(white_buf.data());
             g_epd_instance->sleep();
         }

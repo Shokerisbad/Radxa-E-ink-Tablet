@@ -290,11 +290,15 @@ void RadxaTouch::resume_from_sleep() {
 }
 
 bool RadxaTouch::is_hardware_touched() {
-#ifndef _WIN32
-    if (line_int) {
-        // Return true if the INT pin is LOW (asserted)
-        return gpiod_line_get_value(line_int) == 0;
+    uint8_t status = 0;
+    // Check the GT911 buffer status register (0x814E). 
+    // If the highest bit (0x80) is set, a touch is ready.
+    if (read_reg(0x814E, &status, 1)) {
+        return (status & 0x80) != 0;
     }
-#endif
     return false;
+}
+
+void RadxaTouch::clear_touch_buffer() {
+    write_reg(0x814E, 0x00);
 }

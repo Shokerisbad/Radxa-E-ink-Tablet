@@ -39,6 +39,7 @@ public:
     void resume_from_sleep();
     
     bool is_hardware_touched();
+    void clear_touch_buffer();
 
 private:
     bool init_gpio();

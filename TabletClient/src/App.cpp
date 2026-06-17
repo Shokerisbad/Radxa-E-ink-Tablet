@@ -1498,7 +1498,7 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
-    if (inactive_time > 300000) { // 5 minutes of inactivity
+    if (inactive_time > 20000) { // 20 seconds of inactivity (reduced for fast testing)
         std::cout << "Inactivity timeout reached! Clearing to white and entering Soft Sleep..." << std::endl;
         
         // --- POWER MANAGEMENT (SLEEP) ---
@@ -1514,6 +1514,10 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
             g_epd_instance->sleep();
         }
         
+        if (g_touch_instance) {
+            g_touch_instance->clear_touch_buffer();
+        }
+
         // Wait for hardware touch
         while (true) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));

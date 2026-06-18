@@ -147,6 +147,21 @@ def delete_book(filename):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route('/api/google_key', methods=['GET', 'POST'])
+def manage_google_key():
+    key_path = os.path.join(BOOKS_DIR, '.cache', 'google_api_key.txt')
+    if request.method == 'GET':
+        has_key = os.path.exists(key_path) and os.path.getsize(key_path) > 0
+        return jsonify({"has_key": has_key})
+    
+    if request.method == 'POST':
+        data = request.json
+        key = data.get('api_key', '').strip()
+        os.makedirs(os.path.dirname(key_path), exist_ok=True)
+        with open(key_path, 'w', encoding='utf-8') as f:
+            f.write(key)
+        return jsonify({"success": True, "message": "API Key saved successfully."})
+
 
 @app.route('/api/sync_metadata', methods=['POST'])
 def sync_metadata():

@@ -100,6 +100,30 @@
                     </div>
                 </section>
 
+                <!-- API Settings -->
+                <section class="telemetry-card actions-card">
+                    <div class="card-header">
+                        <span class="card-title">Google Books API</span>
+                        <i data-lucide="key"></i>
+                    </div>
+                    <div class="card-body">
+                        <!-- State when key is configured -->
+                        <div id="api-key-configured" style="display: none; align-items: center; justify-content: space-between; background: var(--bg-tertiary); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <span style="color: #10b981; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i> Key Active
+                            </span>
+                            <button class="btn btn-secondary" onclick="showApiKeyInput()" style="padding: 4px 8px; font-size: 0.8rem;">Change</button>
+                        </div>
+                        
+                        <!-- State when entering key -->
+                        <div id="api-key-input-group" style="display: flex; gap: 8px;">
+                            <input type="password" id="google-api-key" placeholder="Enter API Key" style="flex-grow: 1; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-tertiary); color: var(--text-primary); font-family: monospace;">
+                            <button class="btn btn-primary" onclick="saveApiKey()" id="save-key-btn">Save</button>
+                        </div>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;">Required to automatically fetch book genres and summaries.</p>
+                    </div>
+                </section>
+
                 <!-- System Controls -->
                 <section class="telemetry-card actions-card">
                     <div class="card-header">
@@ -349,6 +373,65 @@
                 showToast("Failed to delete book", "error");
             }
         }
+        function showApiKeyInput() {
+            document.getElementById('api-key-configured').style.display = 'none';
+            document.getElementById('api-key-input-group').style.display = 'flex';
+            document.getElementById('google-api-key').value = '';
+            document.getElementById('google-api-key').focus();
+        }
+
+        // Check if API Key exists
+        async function checkApiKey() {
+            try {
+                const res = await fetch('/api/google_key');
+                const data = await res.json();
+                if (data.has_key) {
+                    document.getElementById('api-key-input-group').style.display = 'none';
+                    document.getElementById('api-key-configured').style.display = 'flex';
+                    lucide.createIcons();
+                }
+            } catch (err) {
+                console.error("Failed to check API key:", err);
+            }
+        }
+        
+        // Save API Key
+        async function saveApiKey() {
+            const keyInput = document.getElementById('google-api-key').value;
+            const btn = document.getElementById('save-key-btn');
+            
+            if (!keyInput) {
+                showToast("Please enter a new API key", "error");
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.innerHTML = `<i data-lucide="loader" class="animate-spin"></i>`;
+            lucide.createIcons();
+            
+            try {
+                const res = await fetch('/api/google_key', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: keyInput })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(data.message, "success");
+                    document.getElementById('api-key-input-group').style.display = 'none';
+                    document.getElementById('api-key-configured').style.display = 'flex';
+                    lucide.createIcons();
+                } else {
+                    throw new Error(data.error || "Failed to save API key");
+                }
+            } catch (err) {
+                console.error("Save API Key failed:", err);
+                showToast(`Failed to save API Key: ${err.message}`, "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Save";
+            }
+        }
 
         // Sync Library Metadata
         async function syncMetadata() {
@@ -588,6 +671,7 @@
 
         // Start polling initially
         startPolling();
+        checkApiKey();
 
         // Pause polling when browser tab goes background to save Radxa CPU/Network
         document.addEventListener('visibilitychange', () => {

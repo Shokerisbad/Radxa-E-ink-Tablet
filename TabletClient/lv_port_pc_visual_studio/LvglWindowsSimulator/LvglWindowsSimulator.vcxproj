@@ -2213,6 +2213,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\LvglPlatform\lvgl\src\debugging\vg_lite_tvg\vg_lite_matrix.c">
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>Default</LanguageStandard>
+      <ObjectFileName>$(IntDir)vg_lite_tvg_matrix.obj</ObjectFileName>
     </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)..\LvglPlatform\lvgl\src\debugging\vg_lite_tvg\vg_lite_tvg.cpp">
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -3377,6 +3378,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)..\LvglPlatform\lvgl\src\libs\gltf\gltf_view\assets\lv_gltf_view_shader.c">
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>Default</LanguageStandard>
+      <ObjectFileName>$(IntDir)lv_gltf_view_shader_c.obj</ObjectFileName>
     </ClCompile>
     <ClCompile Include="$(MSBuildThisFileDirectory)..\LvglPlatform\lvgl\src\libs\gltf\gltf_view\lv_gltf_view.cpp">
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
@@ -4243,6 +4245,7 @@
       <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <ClCompile Include="..\..\src\App.cpp" />
+    <ClCompile Include="..\..\src\stars_font.c" />
     <ClCompile Include="epubHandler.cpp" />
     <ClCompile Include="LvglWindowsSimulator.cpp" />
     <ClCompile Include="pdfHandler.cpp" />

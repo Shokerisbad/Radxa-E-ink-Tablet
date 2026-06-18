@@ -272,6 +272,13 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
       return count;
   };
 
+  auto has_content = [](const std::string& s) {
+      for (char c : s) {
+          if (!std::isspace((unsigned char)c)) return true;
+      }
+      return false;
+  };
+
   while (std::getline(stream, line, '\n')) {
     // Check TOC and force page break for new chapter
     bool chapter_start = false;
@@ -282,12 +289,14 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
       }
     }
 
-    if (chapter_start && !current_page.empty()) {
-        m_pages.push_back(current_page);
-        current_page_idx++;
+    if (chapter_start) {
+        if (has_content(current_page)) {
+            m_pages.push_back(current_page);
+            current_page_idx++;
+            m_pageOffsets.push_back(current_char_index);
+        }
         current_page.clear();
         current_height = 0;
-        m_pageOffsets.push_back(current_char_index);
     }
     
     // Now assign the correct page number
@@ -300,12 +309,15 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
     size_t img_idx = line.find("[IMG:");
     if (img_idx != std::string::npos) {
       // If there's an image, force a page break before it if we have text
-      if (!current_page.empty()) {
+      if (has_content(current_page)) {
         m_pages.push_back(current_page);
         current_page_idx++;
         current_page.clear();
         current_height = 0;
         m_pageOffsets.push_back(current_char_index);
+      } else {
+        current_page.clear();
+        current_height = 0;
       }
       // Push the image on its own page
       m_pages.push_back(line + "\n");
@@ -324,13 +336,17 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
 
     int added_height = wrapped_lines * line_height;
 
-    if (current_height + added_height > SCREEN_MAX_HEIGHT &&
-        !current_page.empty()) {
-      m_pages.push_back(current_page);
-      current_page_idx++;
-      current_page = line + "\n";
-      current_height = added_height;
-      m_pageOffsets.push_back(current_char_index);
+    if (current_height + added_height > SCREEN_MAX_HEIGHT) {
+      if (has_content(current_page)) {
+        m_pages.push_back(current_page);
+        current_page_idx++;
+        current_page = line + "\n";
+        current_height = added_height;
+        m_pageOffsets.push_back(current_char_index);
+      } else {
+        current_page = line + "\n";
+        current_height = added_height;
+      }
     } else {
       current_page += line + "\n";
       current_height += added_height;
@@ -339,7 +355,7 @@ void EpubHandler::paginateText(const std::string &text, int chars_per_line, int 
     current_char_index += line.length() + 1;
   }
 
-  if (!current_page.empty()) {
+  if (has_content(current_page)) {
     m_pages.push_back(current_page);
     current_page_idx++;
   }
@@ -609,8 +625,14 @@ bool EpubHandler::loadEpub(const std::string &filepath) {
       file_offsets[full_href] = full_text.length();
       
       std::string stripped = stripHtmlTags(raw_html, m_title);
-      std::string cleaned = clean_string(stripped) + "\n\n";
-      full_text += cleaned;
+      std::string cleaned = clean_string(stripped);
+      
+      size_t first = cleaned.find_first_not_of(" \t\n\r");
+      if (first != std::string::npos) {
+          size_t last = cleaned.find_last_not_of(" \t\n\r");
+          cleaned = cleaned.substr(first, last - first + 1);
+          full_text += cleaned + "\n\n";
+      }
   }
   
   zip_close(z);

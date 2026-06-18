@@ -89,15 +89,15 @@ int main() {
   //  lv_demo_widgets();
   // lv_demo_benchmark();
 
-  // Initialize the monochrome theme.
-  // 1. Get the default display
+  // Initialize the default theme
   lv_display_t *disp = lv_display_get_default();
-
-  // 2. Initialize the monochrome theme (light background)
-  lv_theme_t *th = lv_theme_mono_init(disp, false, LV_FONT_DEFAULT);
-
-  // 3. Apply it to the display
+  lv_theme_t *th = lv_theme_default_init(disp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED), false, LV_FONT_DEFAULT);
   lv_display_set_theme(disp, th);
+
+  // Windows backend needs at least one timer tick to mature and allocate its draw buffers
+  // Wait 50ms so the 30ms timer is definitely due.
+  lv_delay_ms(50);
+  lv_timer_handler();
 
   // Build the sub-screens and load main
   build_tablet_ui();

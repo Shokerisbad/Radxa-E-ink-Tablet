@@ -24,6 +24,18 @@ void update_status_bar(bool force_full_refresh) {}
 #include "../RadxaEPD.h"
 #include "../RadxaTouch.h"
 
+#ifdef _WIN32
+RadxaEPD* g_epd_instance = nullptr;
+RadxaTouch* g_touch_instance = nullptr;
+void RadxaEPD::sleep() {}
+void RadxaEPD::wake() {}
+void RadxaEPD::refresh_full(const uint8_t*) {}
+void RadxaEPD::force_full_refresh() {}
+bool RadxaEPD::is_wifi_connected() { return true; }
+bool RadxaTouch::is_hardware_touched() { return false; }
+void RadxaTouch::clear_touch_buffer() {}
+#endif
+
 #include "epubHandler.h"
 #include "pdfHandler.h"
 #include <httplib.h>
@@ -424,6 +436,8 @@ static void load_screen_cb(lv_event_t *e) {
 static void build_library_list(SortMode mode = SORT_BY_TITLE); // Forward declaration
 static void request_ai_recommendation(const std::string &user_prompt, bool exact_match = false, bool use_reviews = true);
 
+extern "C" { LV_FONT_DECLARE(stars_font); }
+
 static void show_rating_popup(const std::string &book_title, int total_pages) {
   lv_obj_t *modal = create_white_container(lv_scr_act());
   lv_obj_set_size(modal, 400, 300);
@@ -470,7 +484,7 @@ static void show_rating_popup(const std::string &book_title, int total_pages) {
       },
       LV_EVENT_DELETE, rstate);
 
-  LV_FONT_DECLARE(stars_font);
+
   for (int i = 0; i < 5; ++i) {
     lv_obj_t *btn = create_styled_btn(btn_container);
     lv_obj_set_style_pad_all(btn, 10, 0); // bigger touch area
@@ -1060,7 +1074,23 @@ static std::string url_encode(const std::string &value) {
 }
 
 static bool fetch_google_books_metadata_internal(const std::string& q, std::string& genre_out, std::string& summary_out) {
+    std::string api_key = "";
+    FILE* key_fp = fopen("books/.cache/google_api_key.txt", "r");
+    if (key_fp) {
+        char key_buf[128];
+        if (fgets(key_buf, sizeof(key_buf), key_fp) != nullptr) {
+            api_key = key_buf;
+            // Trim newline
+            api_key.erase(std::remove(api_key.begin(), api_key.end(), '\n'), api_key.cend());
+            api_key.erase(std::remove(api_key.begin(), api_key.end(), '\r'), api_key.cend());
+        }
+        fclose(key_fp);
+    }
+
     std::string url = "https://www.googleapis.com/books/v1/volumes?q=" + url_encode(q);
+    if (!api_key.empty()) {
+        url += "&key=" + api_key;
+    }
     std::string cmd = "curl -k -L -s \"" + url + "\" 2>&1";
     
     std::cout << "[API] Fetching: " << url << std::endl;
@@ -1127,7 +1157,10 @@ static bool fetch_open_library_metadata(const std::string& title, const std::str
     }
     pclose(fp);
     
-    if (response.empty()) return false;
+    if (response.empty()) {
+        std::cout << "[API] OpenLibrary returned empty response (curl failed or 429 Rate Limit)" << std::endl;
+        return false;
+    }
     try {
         json j = json::parse(response);
         if (j.contains("docs") && j["docs"].is_array()) {
@@ -1136,6 +1169,29 @@ static bool fetch_open_library_metadata(const std::string& title, const std::str
                     genre_out = doc["subject"][0].get<std::string>();
                     std::cout << "[API] OpenLibrary Success! Found genre: " << genre_out << std::endl;
                     return true;
+                } else if (doc.contains("key") && doc["key"].is_string()) {
+                    std::string work_key = doc["key"].get<std::string>();
+                    std::string work_url = "https://openlibrary.org" + work_key + ".json";
+                    std::string work_cmd = "curl -k -L -s \"" + work_url + "\" 2>&1";
+                    
+                    FILE* fp_work = popen(work_cmd.c_str(), "r");
+                    if (fp_work) {
+                        std::string work_response;
+                        char wbuf[512];
+                        while (fgets(wbuf, sizeof(wbuf), fp_work) != nullptr) {
+                            work_response += wbuf;
+                        }
+                        pclose(fp_work);
+                        
+                        try {
+                            json wj = json::parse(work_response);
+                            if (wj.contains("subjects") && wj["subjects"].is_array() && wj["subjects"].size() > 0) {
+                                genre_out = wj["subjects"][0].get<std::string>();
+                                std::cout << "[API] OpenLibrary Success (via Works API)! Found genre: " << genre_out << std::endl;
+                                return true;
+                            }
+                        } catch (...) {}
+                    }
                 }
             }
         }
@@ -1165,28 +1221,26 @@ static bool fetch_google_books_metadata(const std::string& title, const std::str
     }
     
     if (fetch_google_books_metadata_internal(q_strict, genre_out, summary_out)) {
-        if (!genre_out.empty() && !summary_out.empty()) return true;
+        return true; // Found response on Google API, takes priority.
     }
     
-    // 2. Open Library fallback (for genre)
-    if (genre_out.empty()) {
-        fetch_open_library_metadata(clean_title, author, genre_out);
+    // 2. Relaxed query fallback (Google Books full text search)
+    std::string backup_genre, backup_summary;
+    std::string q_relaxed = clean_title;
+    if (!author.empty()) {
+        if (!q_relaxed.empty()) q_relaxed += " ";
+        q_relaxed += author;
     }
     
-    // 3. Relaxed query fallback (Google Books full text search)
-    if (genre_out.empty() || summary_out.empty()) {
-        std::string backup_genre, backup_summary;
-        std::string q_relaxed = clean_title;
-        if (!author.empty()) {
-            if (!q_relaxed.empty()) q_relaxed += " ";
-            q_relaxed += author;
-        }
-        
-        std::cout << "[API] Strict/OpenLib failed to get everything, trying relaxed query: " << q_relaxed << std::endl;
-        if (fetch_google_books_metadata_internal(q_relaxed, backup_genre, backup_summary)) {
-            if (genre_out.empty()) genre_out = backup_genre;
-            if (summary_out.empty()) summary_out = backup_summary;
-        }
+    std::cout << "[API] Strict Google API failed, trying relaxed query: " << q_relaxed << std::endl;
+    if (fetch_google_books_metadata_internal(q_relaxed, genre_out, summary_out)) {
+        return true; // Found response on Google API, takes priority.
+    }
+
+    // 3. Open Library fallback (for genre) ONLY if Google API found nothing
+    std::cout << "[API] Google API failed entirely, trying OpenLibrary fallback." << std::endl;
+    if (fetch_open_library_metadata(clean_title, author, genre_out)) {
+        return true;
     }
     
     return (!genre_out.empty() || !summary_out.empty());
@@ -1517,6 +1571,7 @@ static void global_gesture_cb(lv_event_t *e) {
 static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
     update_status_bar(false);
     
+#ifndef _WIN32
     uint32_t inactive_time = lv_disp_get_inactive_time(NULL);
     if (inactive_time > 300000) { // 5 minutes of inactivity
         std::cout << "Inactivity timeout reached! Clearing to white and entering Soft Sleep..." << std::endl;
@@ -1562,6 +1617,7 @@ static void inactivity_sleep_timer_cb(lv_timer_t * timer) {
         
         lv_disp_trig_activity(NULL);  
     }
+#endif
 }
 
 
@@ -1930,7 +1986,7 @@ static void sync_metadata_cb(lv_event_t *e) {
                     if (!api_g.empty() && (meta.genre == "Unknown Genre" || meta.genre.empty())) meta.genre = api_g;
                     if (!api_s.empty() && (meta.summary == "No summary available." || meta.summary.empty())) meta.summary = api_s;
                 }
-                sleep(1); // Small delay to avoid Google Books API 429 Too Many Requests
+                std::this_thread::sleep_for(std::chrono::seconds(1)); // Small delay to avoid Google Books API 429 Too Many Requests
             }
 
             if (meta.genre != old_g || meta.summary != old_s) {

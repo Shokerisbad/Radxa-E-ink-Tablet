@@ -1346,16 +1346,36 @@ static void build_library_list(SortMode mode) {
       lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
       lv_obj_set_style_pad_all(row, 0, 0);
 
+      std::filesystem::path p(path_str);
+      std::string cover_path = "A:books/.cache/covers/" + p.stem().string() + ".bmp";
+      std::string real_cover_path = "books/.cache/covers/" + p.stem().string() + ".bmp";
+      
+      if (std::filesystem::exists(real_cover_path)) {
+          lv_obj_t *cover_img = lv_image_create(row);
+          lv_image_set_src(cover_img, cover_path.c_str());
+          // Optional: Add a subtle border or spacing if needed
+      } else {
+          // Placeholder or empty space to keep alignment
+          lv_obj_t *placeholder = create_white_container(row);
+          lv_obj_set_size(placeholder, 90, 120);
+          lv_obj_set_style_bg_color(placeholder, lv_color_hex(0xE0E0E0), 0); // Light gray placeholder
+          lv_obj_set_style_border_width(placeholder, 0, 0);
+          
+          lv_obj_t *icon_lbl = lv_label_create(placeholder);
+          lv_label_set_text(icon_lbl, "[ Book ]");
+          lv_obj_center(icon_lbl);
+      }
+
       lv_obj_t *btn = create_styled_btn(row);
-      lv_obj_set_size(btn, 320, LV_SIZE_CONTENT);
+      lv_obj_set_size(btn, 250, 120); // Height to match image, width reduced
       lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_COLUMN);
-      lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+      lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
       lv_obj_add_event_cb(btn, book_clicked_cb, LV_EVENT_CLICKED, (void *)book_filepaths.back().c_str());
       
       lv_obj_t *lbl_title = lv_label_create(btn);
       lv_label_set_text(lbl_title, g_book_metadata[path_str].title.c_str());
       lv_label_set_long_mode(lbl_title, LV_LABEL_LONG_CLIP);
-      lv_obj_set_width(lbl_title, 280);
+      lv_obj_set_width(lbl_title, 230);
 
       lv_obj_t *lbl_author = lv_label_create(btn);
       
@@ -1372,14 +1392,14 @@ static void build_library_list(SortMode mode) {
       
       lv_label_set_text(lbl_author, author_str.c_str());
       lv_label_set_long_mode(lbl_author, LV_LABEL_LONG_CLIP);
-      lv_obj_set_width(lbl_author, 280);
+      lv_obj_set_width(lbl_author, 230);
       
       lv_obj_t *lbl_genre = lv_label_create(btn);
       std::string genre_str = g_book_metadata[path_str].genre;
       if (genre_str.empty()) genre_str = "Unknown Genre";
       lv_label_set_text(lbl_genre, genre_str.c_str());
       lv_label_set_long_mode(lbl_genre, LV_LABEL_LONG_CLIP);
-      lv_obj_set_width(lbl_genre, 280);
+      lv_obj_set_width(lbl_genre, 230);
       // Removed gray text color because it causes thin letters ('l') to disappear on E-ink
 
       lv_obj_t *rate_btn = create_styled_btn(row);
@@ -2129,22 +2149,46 @@ void build_tablet_ui() {
   lv_label_set_text(lib_title, "Library Books");
   lv_obj_align(lib_title, LV_ALIGN_TOP_MID, 0, 45); // Shifted down for status bar
 
-  lv_obj_t *lib_back = create_styled_btn(screen_library);
-  lv_obj_align(lib_back, LV_ALIGN_BOTTOM_LEFT, 20, -40);
+  lv_obj_t *lib_bottombar = create_white_container(screen_library);
+  lv_obj_set_size(lib_bottombar, LV_PCT(100), 60);
+  lv_obj_align(lib_bottombar, LV_ALIGN_BOTTOM_MID, 0, -10);
+  lv_obj_set_flex_flow(lib_bottombar, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(lib_bottombar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t *lib_back = create_styled_btn(lib_bottombar);
   lv_obj_add_event_cb(lib_back, load_screen_cb, LV_EVENT_CLICKED, screen_main);
   lv_obj_t *lbl_lib_back = lv_label_create(lib_back);
   lv_label_set_text(lbl_lib_back, LV_SYMBOL_HOME);
-    lv_obj_center(lbl_lib_back);
+  lv_obj_center(lbl_lib_back);
+
+  lv_obj_t *lib_btn_up = create_styled_btn(lib_bottombar);
+  lv_obj_t *lib_lbl_up = lv_label_create(lib_btn_up);
+  lv_label_set_text(lib_lbl_up, "Page Up");
+  lv_obj_add_event_cb(lib_btn_up, [](lv_event_t *e){
+      lv_coord_t y = lv_obj_get_scroll_y(book_list);
+      lv_coord_t new_y = std::max((lv_coord_t)0, (lv_coord_t)(y - 500));
+      lv_obj_scroll_to_y(book_list, new_y, LV_ANIM_OFF);
+      lv_obj_invalidate(screen_library);
+  }, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t *lib_btn_down = create_styled_btn(lib_bottombar);
+  lv_obj_t *lib_lbl_down = lv_label_create(lib_btn_down);
+  lv_label_set_text(lib_lbl_down, "Page Down");
+  lv_obj_add_event_cb(lib_btn_down, [](lv_event_t *e){
+      lv_coord_t y = lv_obj_get_scroll_y(book_list);
+      lv_obj_scroll_to_y(book_list, y + 500, LV_ANIM_OFF);
+      lv_obj_invalidate(screen_library);
+  }, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t *lib_refresh = create_styled_btn(screen_library);
   lv_obj_align(lib_refresh, LV_ALIGN_TOP_RIGHT, -20, 40); // Shifted down for status bar
-    lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(lib_refresh, refresh_lib_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_lib_refresh = lv_label_create(lib_refresh);
   lv_label_set_text(lbl_lib_refresh, "Refresh");
-    lv_obj_center(lbl_lib_refresh);
+  lv_obj_center(lbl_lib_refresh);
 
   book_list = create_white_container(screen_library);
-  lv_obj_set_size(book_list, 440, 660); // Maximized width and height
+  lv_obj_set_size(book_list, 440, 560); // Shrunk to fit bottom bar
   lv_obj_align(book_list, LV_ALIGN_TOP_MID, 0, 100); // Placed cleanly below headers
   lv_obj_set_scroll_dir(book_list, LV_DIR_VER); // Only scroll vertically
   lv_obj_add_event_cb(book_list, global_gesture_cb, LV_EVENT_GESTURE, NULL);

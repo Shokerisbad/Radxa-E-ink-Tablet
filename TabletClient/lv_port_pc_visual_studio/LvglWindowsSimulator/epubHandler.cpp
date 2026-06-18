@@ -774,9 +774,11 @@ bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_ou
   }
 
   std::string opf_content = read_file_from_zip(opf_path);
-  zip_close(z);
 
-  if (opf_content.empty()) return false;
+  if (opf_content.empty()) {
+    zip_close(z);
+    return false;
+  }
 
   // Extract Title
   size_t title_start = opf_content.find("<dc:title");
@@ -818,5 +820,93 @@ bool EpubHandler::getMetadata(const std::string& filepath, std::string& title_ou
     }
   }
 
+  // Cover extraction
+  std::filesystem::path p(filepath);
+  std::string out_cover = "books/.cache/covers/" + p.stem().string() + ".bmp";
+  if (!std::filesystem::exists("books/.cache/covers")) {
+      std::filesystem::create_directories("books/.cache/covers");
+  }
+
+  if (!std::filesystem::exists(out_cover)) {
+      std::string cover_href;
+      
+      // EPUB 3
+      size_t cover_prop = opf_content.find("properties=\"cover-image\"");
+      if (cover_prop != std::string::npos) {
+          size_t item_start = opf_content.rfind("<item ", cover_prop);
+          if (item_start != std::string::npos) {
+              size_t href_start = opf_content.find("href=\"", item_start);
+              if (href_start != std::string::npos && href_start < opf_content.find(">", item_start)) {
+                  href_start += 6;
+                  size_t href_end = opf_content.find("\"", href_start);
+                  cover_href = opf_content.substr(href_start, href_end - href_start);
+              }
+          }
+      }
+      
+      // EPUB 2
+      if (cover_href.empty()) {
+          size_t meta_cover = opf_content.find("name=\"cover\"");
+          if (meta_cover != std::string::npos) {
+              size_t meta_start = opf_content.rfind("<meta ", meta_cover);
+              if (meta_start != std::string::npos) {
+                  size_t content_start = opf_content.find("content=\"", meta_start);
+                  if (content_start != std::string::npos && content_start < opf_content.find(">", meta_start)) {
+                      content_start += 9;
+                      size_t content_end = opf_content.find("\"", content_start);
+                      std::string cover_id = opf_content.substr(content_start, content_end - content_start);
+                      
+                      size_t item_start = opf_content.find("id=\"" + cover_id + "\"");
+                      if (item_start != std::string::npos) {
+                          item_start = opf_content.rfind("<item ", item_start);
+                          if (item_start != std::string::npos) {
+                              size_t href_start = opf_content.find("href=\"", item_start);
+                              if (href_start != std::string::npos && href_start < opf_content.find(">", item_start)) {
+                                  href_start += 6;
+                                  size_t href_end = opf_content.find("\"", href_start);
+                                  cover_href = opf_content.substr(href_start, href_end - href_start);
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+
+      if (!cover_href.empty()) {
+          size_t slash_pos = opf_path.rfind('/');
+          std::string opf_dir = (slash_pos != std::string::npos) ? opf_path.substr(0, slash_pos + 1) : "";
+          std::string zip_cover_path = opf_dir + cover_href;
+          
+          std::string cover_data = read_file_from_zip(zip_cover_path);
+          if (!cover_data.empty()) {
+              int w, h, c;
+              uint8_t *img = stbi_load_from_memory((const stbi_uc*)cover_data.data(), cover_data.size(), &w, &h, &c, 3);
+              if (img) {
+                  int new_w = 90;
+                  int new_h = 120;
+                  uint8_t* scaled = new uint8_t[new_w * new_h * 3];
+                  for (int y = 0; y < new_h; y++) {
+                      for (int x = 0; x < new_w; x++) {
+                          int orig_x = (x * w) / new_w;
+                          int orig_y = (y * h) / new_h;
+                          if (orig_x >= w) orig_x = w - 1;
+                          if (orig_y >= h) orig_y = h - 1;
+                          int orig_i = (orig_y * w + orig_x) * 3;
+                          int new_i = (y * new_w + x) * 3;
+                          scaled[new_i] = img[orig_i];
+                          scaled[new_i+1] = img[orig_i+1];
+                          scaled[new_i+2] = img[orig_i+2];
+                      }
+                  }
+                  write_bmp(out_cover.c_str(), new_w, new_h, 3, scaled);
+                  delete[] scaled;
+                  stbi_image_free(img);
+              }
+          }
+      }
+  }
+
+  zip_close(z);
   return true;
 }

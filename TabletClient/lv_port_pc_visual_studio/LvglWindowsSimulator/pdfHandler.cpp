@@ -245,6 +245,47 @@ bool PdfHandler::getMetadata(const std::string& filepath, std::string& title_out
                 author_out = author_buf;
             }
             success = true;
+
+            // Extract cover if not exists
+            std::filesystem::path p(filepath);
+            std::string cover_path = "books/.cache/covers/" + p.stem().string() + ".bmp";
+            if (!std::filesystem::exists("books/.cache/covers")) {
+                std::filesystem::create_directories("books/.cache/covers");
+            }
+            
+            if (!std::filesystem::exists(cover_path)) {
+                fz_try(ctx) {
+                    fz_page *page = fz_load_page(ctx, doc, 0);
+                    if (page) {
+                        fz_rect bounds = fz_bound_page(ctx, page);
+                        float page_w = bounds.x1 - bounds.x0;
+                        float page_h = bounds.y1 - bounds.y0;
+                        float target_w = 90.0f;
+                        float target_h = 120.0f;
+                        float zoom_x = target_w / page_w;
+                        float zoom_y = target_h / page_h;
+                        float zoom = std::min(zoom_x, zoom_y);
+                        
+                        fz_matrix ctm = fz_scale(zoom, zoom);
+                        bounds = fz_transform_rect(bounds, ctm);
+                        ctm = fz_concat(ctm, fz_translate(-bounds.x0, -bounds.y0));
+                        bounds = fz_transform_rect(bounds, fz_translate(-bounds.x0, -bounds.y0));
+                        
+                        fz_pixmap *pix = fz_new_pixmap_with_bbox(ctx, fz_device_rgb(ctx), fz_round_rect(bounds), NULL, 0);
+                        fz_clear_pixmap_with_value(ctx, pix, 0xFF);
+                        fz_device *dev = fz_new_draw_device(ctx, fz_identity, pix);
+                        fz_run_page(ctx, page, dev, ctm, NULL);
+                        fz_close_device(ctx, dev);
+                        fz_drop_device(ctx, dev);
+                        
+                        write_bmp(cover_path.c_str(), pix->w, pix->h, pix->n, pix->stride, pix->samples);
+                        fz_drop_pixmap(ctx, pix);
+                        fz_drop_page(ctx, page);
+                    }
+                } fz_catch(ctx) {
+                    std::cerr << "Failed to extract PDF cover\n";
+                }
+            }
         }
     }
     fz_always(ctx) {

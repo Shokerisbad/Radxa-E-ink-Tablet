@@ -1719,13 +1719,31 @@ static void fetch_dict_bg(std::string word) {
                 try {
                     json j = json::parse(response);
                     if (j.is_array() && j.size() > 0) {
-                        auto meanings = j[0]["meanings"];
-                        if (meanings.is_array() && meanings.size() > 0) {
-                            auto defs = meanings[0]["definitions"];
-                            if (defs.is_array() && defs.size() > 0) {
-                                p->definition = defs[0]["definition"].get<std::string>();
-                                p->success = true;
+                        std::string full_def = "";
+                        for (auto& entry : j) {
+                            if (entry.contains("meanings") && entry["meanings"].is_array()) {
+                                for (auto& meaning : entry["meanings"]) {
+                                    if (meaning.contains("partOfSpeech") && meaning["partOfSpeech"].is_string()) {
+                                        full_def += "[" + meaning["partOfSpeech"].get<std::string>() + "]\n";
+                                    }
+                                    if (meaning.contains("definitions") && meaning["definitions"].is_array()) {
+                                        int def_idx = 1;
+                                        for (auto& def : meaning["definitions"]) {
+                                            if (def.contains("definition") && def["definition"].is_string()) {
+                                                full_def += std::to_string(def_idx++) + ". " + def["definition"].get<std::string>() + "\n";
+                                                if (def_idx > 3) break; // Limit to 3 definitions per part of speech to fit on screen
+                                            }
+                                        }
+                                        full_def += "\n";
+                                    }
+                                }
                             }
+                        }
+                        if (!full_def.empty()) {
+                            // Trim trailing newlines
+                            while (!full_def.empty() && full_def.back() == '\n') full_def.pop_back();
+                            p->definition = full_def;
+                            p->success = true;
                         }
                     } else if (j.is_object() && j.contains("title")) {
                         p->definition = j["title"].get<std::string>();

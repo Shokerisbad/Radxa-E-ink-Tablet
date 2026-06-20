@@ -17,7 +17,7 @@
 
 // Hardware configuration
 #define SPI_DEVICE "/dev/spidev3.0"
-#define SPI_SPEED 8000000
+#define SPI_SPEED 5000000
 #define SPI_MODE SPI_MODE_0
 #define SPI_BITS 8
 

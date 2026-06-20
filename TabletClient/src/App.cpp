@@ -2010,9 +2010,26 @@ static void sync_metadata_cb(lv_event_t *e) {
     }
 
     std::cout << "[Sync] Starting metadata sync..." << std::endl;
-    bool cache_changed = false;
-    for (auto& [path, meta] : g_book_metadata) {
-        if (meta.genre == "Unknown Genre" || meta.genre.empty() || meta.summary == "No summary available." || meta.summary.empty()) {
+    
+    // Make a copy of what needs syncing so we can process it in the background
+    std::vector<std::pair<std::string, BookMetadata>> to_sync;
+    for (const auto& pair : g_book_metadata) {
+        if (pair.second.genre == "Unknown Genre" || pair.second.genre.empty() || pair.second.summary == "No summary available." || pair.second.summary.empty()) {
+            to_sync.push_back({pair.first, pair.second});
+        }
+    }
+    
+    if (to_sync.empty()) {
+        std::cout << "[Sync] Metadata sync complete. No updates found." << std::endl;
+        return;
+    }
+
+    std::thread([to_sync]() {
+        bool cache_changed = false;
+        for (const auto& item : to_sync) {
+            std::string path = item.first;
+            BookMetadata meta = item.second; // local copy
+            
             std::string old_g = meta.genre;
             std::string old_s = meta.summary;
 
@@ -2038,21 +2055,30 @@ static void sync_metadata_cb(lv_event_t *e) {
                     if (!api_g.empty() && (meta.genre == "Unknown Genre" || meta.genre.empty())) meta.genre = api_g;
                     if (!api_s.empty() && (meta.summary == "No summary available." || meta.summary.empty())) meta.summary = api_s;
                 }
-                std::this_thread::sleep_for(std::chrono::seconds(1)); // Small delay to avoid Google Books API 429 Too Many Requests
+                std::this_thread::sleep_for(std::chrono::seconds(1)); // Small delay to avoid API rate limits
             }
 
             if (meta.genre != old_g || meta.summary != old_s) {
-                cache_changed = true;
+                lvgl_mutex.lock();
+                if (g_book_metadata.count(path)) {
+                    g_book_metadata[path].genre = meta.genre;
+                    g_book_metadata[path].summary = meta.summary;
+                    cache_changed = true;
+                }
+                lvgl_mutex.unlock();
             }
         }
-    }
 
-    if (cache_changed) {
-        save_metadata_cache();
-        std::cout << "[Sync] Metadata sync complete. Cache updated." << std::endl;
-    } else {
-        std::cout << "[Sync] Metadata sync complete. No updates found." << std::endl;
-    }
+        if (cache_changed) {
+            lvgl_mutex.lock();
+            save_metadata_cache();
+            std::cout << "[Sync] Metadata sync complete. Cache updated." << std::endl;
+            lv_async_call(refresh_lib_async_cb, NULL);
+            lvgl_mutex.unlock();
+        } else {
+            std::cout << "[Sync] Metadata sync complete. No updates found." << std::endl;
+        }
+    }).detach();
 }
 
 void build_tablet_ui() {

@@ -143,6 +143,9 @@ int g_current_font_index = 0;
 
 std::vector<ImageScaleSettings> g_image_scale_options = {
     {100, "Original (100%)"},
+    {90,  "Large (90%)"},
+    {85,  "Large (85%)"},
+    {80,  "Large (80%)"},
     {75,  "Medium (75%)"},
     {50,  "Small (50%)"}
 };

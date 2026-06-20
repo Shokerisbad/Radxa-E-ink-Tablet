@@ -1247,6 +1247,17 @@ static bool fetch_google_books_metadata(const std::string& title, const std::str
 }
 
 static void refresh_lib_cb(lv_event_t *e) { build_library_list(g_current_sort); }
+struct PendingFetch {
+    std::string path;
+    std::string title;
+    std::string author;
+};
+
+static void build_library_list(SortMode mode);
+
+static void refresh_lib_async_cb(void *data) {
+    build_library_list(g_current_sort);
+}
 
 static void build_library_list(SortMode mode) {
   g_current_sort = mode;
@@ -1271,6 +1282,7 @@ static void build_library_list(SortMode mode) {
 
   std::vector<std::string> temp_files;
   std::vector<std::pair<std::string, std::string>> pending_renames;
+  std::vector<PendingFetch> pending_api_fetches;
 
   for (const auto &entry : std::filesystem::directory_iterator("books")) {
     if (entry.is_regular_file()) {
@@ -1298,14 +1310,11 @@ static void build_library_list(SortMode mode) {
             }
             if (a.empty()) a = "Unknown";
             
-            // Graceful Degradation: Fetch from Google Books if Wi-Fi is connected
+            // Queue for background API fetch if Wi-Fi is connected
             if (RadxaEPD::is_wifi_connected()) {
-                std::string api_g, api_s;
-                if (fetch_google_books_metadata(t, a == "Unknown" ? "" : a, api_g, api_s)) {
-                    if (!api_g.empty()) g = api_g;
-                    if (!api_s.empty()) s = api_s;
-                }
+                pending_api_fetches.push_back({p, t, a});
             }
+
             if (g.empty()) g = "Unknown Genre";
             if (s.empty()) s = "No summary available.";
             
@@ -1467,6 +1476,31 @@ static void build_library_list(SortMode mode) {
           std::string title = g_book_metadata[p].title;
           show_rating_popup(title, 1); 
       }, LV_EVENT_CLICKED, (void *)book_filepaths.back().c_str());
+  }
+
+  // Spawn background thread for API fetches
+  if (!pending_api_fetches.empty()) {
+      std::thread([pending_api_fetches]() {
+          bool any_updated = false;
+          for (const auto& fetch : pending_api_fetches) {
+              std::string api_g, api_s;
+              if (fetch_google_books_metadata(fetch.title, fetch.author == "Unknown" ? "" : fetch.author, api_g, api_s)) {
+                  lvgl_mutex.lock();
+                  if (g_book_metadata.count(fetch.path)) {
+                      if (!api_g.empty()) g_book_metadata[fetch.path].genre = api_g;
+                      if (!api_s.empty()) g_book_metadata[fetch.path].summary = api_s;
+                      any_updated = true;
+                  }
+                  lvgl_mutex.unlock();
+              }
+          }
+          if (any_updated) {
+              lvgl_mutex.lock();
+              save_metadata_cache();
+              lv_async_call(refresh_lib_async_cb, NULL);
+              lvgl_mutex.unlock();
+          }
+      }).detach();
   }
 }
 

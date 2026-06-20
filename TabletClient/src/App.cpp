@@ -599,7 +599,11 @@ static void update_reader_ui() {
         } else {
             // Software resizer
             int w, h, c;
-            uint8_t* img = stbi_load(current_img_path.c_str(), &w, &h, &c, 3);
+            std::string stbi_path = current_img_path;
+            if (stbi_path.rfind("A:", 0) == 0) {
+                stbi_path = stbi_path.substr(2);
+            }
+            uint8_t* img = stbi_load(stbi_path.c_str(), &w, &h, &c, 3);
             if (img) {
                 int new_w = (w * scale) / 100;
                 int new_h = (h * scale) / 100;
@@ -619,8 +623,8 @@ static void update_reader_ui() {
                         }
                     }
                     
-                    std::string out_path = "/tmp/scaled_img.bmp";
-                    FILE* f = fopen(out_path.c_str(), "wb");
+                    std::string base_out_path = "/tmp/scaled_img.bmp";
+                    FILE* f = fopen(base_out_path.c_str(), "wb");
                     if (f) {
                         int row_padded = (new_w * 3 + 3) & (~3);
                         uint32_t filesize = 54 + new_h * row_padded;
@@ -647,7 +651,8 @@ static void update_reader_ui() {
                     }
                     delete[] scaled;
                     
-                    lv_image_set_src(reader_img, out_path.c_str());
+                    std::string lvgl_out_path = "A:" + base_out_path;
+                    lv_image_set_src(reader_img, lvgl_out_path.c_str());
                 }
                 stbi_image_free(img);
             }

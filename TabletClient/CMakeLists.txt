@@ -6,10 +6,10 @@ set(CMAKE_C_STANDARD 99)
 
 # Include LVGL
 # The LVGL source is inside the Visual Studio port folder
-set(LVGL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglPlatform/lvgl)
+set(LVGL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../WindowsSimulator/LvglPlatform/lvgl)
 
 # Tell LVGL exactly where our configuration file is located
-set(LV_BUILD_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglWindowsSimulator/lv_conf.h CACHE PATH "Path to lv_conf.h")
+set(LV_BUILD_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../WindowsSimulator/LvglWindowsSimulator/lv_conf.h CACHE PATH "Path to lv_conf.h")
 
 if(EXISTS ${LVGL_DIR}/CMakeLists.txt)
     add_subdirectory(${LVGL_DIR})
@@ -18,9 +18,10 @@ else()
 endif()
 
 # We need the lv_conf.h directory in the include path
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglWindowsSimulator)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../WindowsSimulator/LvglWindowsSimulator)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/lv_port_pc_visual_studio/LvglPlatform)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../WindowsSimulator/LvglPlatform)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # --- ADDED: Find ZLIB to fix the libzip linking error ---
 find_package(ZLIB REQUIRED)
@@ -33,8 +34,8 @@ set(SOURCES
     RadxaTouch.cpp
     src/App.cpp
     src/stars_font.c
-    lv_port_pc_visual_studio/LvglWindowsSimulator/epubHandler.cpp
-    lv_port_pc_visual_studio/LvglWindowsSimulator/pdfHandler.cpp
+    src/epubHandler.cpp
+    src/pdfHandler.cpp
 )
 
 add_executable(TabletClient ${SOURCES})

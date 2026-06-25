@@ -1,0 +1,42 @@
+﻿MSBuild version 18.4.0+6e61e96ac for .NET Framework
+Build started 07/04/2026 00:33:50.
+
+Project "d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj" on node 1 (default targets).
+PrepareForBuild:
+  Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+InitializeBuildStatus:
+  Touching "d:\LICENTA\TabletClient\lv_port_pc_visual_studio\Output\Objects\Debug\LvglWindowsSimulator\x64\LvglWind.3CA6E070.tlog\unsuccessfulbuild".
+C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VC\v180\Microsoft.CppBuild.targets(1142,5): warning MSB8027: Two or more files with the name of vg_lite_matrix.c will produce outputs to the same location. This can lead to an incorrect build result.  The files involved are d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\..\LvglPlatform\lvgl\src\debugging\vg_lite_tvg\vg_lite_matrix.c, d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\..\LvglPlatform\lvgl\src\libs\vg_lite_driver\VGLite\vg_lite_matrix.c. [d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj]
+ComputeStdModulesCompileInputs:
+  Reading library manifest file 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\modules\modules.json' which provides data for library 'microsoft/STL'.
+  Adding module source 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\modules\std.ixx' from library 'microsoft/STL' to be built with this project.
+  Adding module source 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\modules\std.compat.ixx' from library 'microsoft/STL' to be built with this project.
+VcpkgTripletSelection:
+  Using triplet "x64-windows" from "C:\vcpkg\installed\x64-windows\"
+  Using normalized configuration "Debug"
+ClCompile:
+  All outputs are up-to-date.
+  All outputs are up-to-date.
+  C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\bin\HostX64\x64\CL.exe /c /Id:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\..\LvglPlatform\freetype\include\ /I"C:\vcpkg\installed\x64-windows\include" /ZI /JMC /nologo /W3 /WX- /diagnostics:column /sdl /MP /Od /D LV_CONF_INCLUDE_SIMPLE /D LV_LVGL_H_INCLUDE_SIMPLE /D LV_USE_DEV_VERSION /D _CRT_SECURE_NO_WARNINGS /D _CRT_NONSTDC_NO_WARNINGS /D FT2_BUILD_LIBRARY /D _DEBUG /D _CONSOLE /D MILE_PROJECT_VERSION_REVISION=0 /D MILE_PROJECT_VERSION_BUILD=0 /D MILE_PROJECT_VERSION_MINOR=0 /D MILE_PROJECT_VERSION_MAJOR=9 /D _MILE_PROJECT_BUILD_DATE=20260407 /D _UNICODE /D UNICODE /Gm- /EHsc /RTC1 /MTd /GS /fp:precise /guard:ehcont /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++23preview /permissive- /Fo"d:\LICENTA\TabletClient\lv_port_pc_visual_studio\Output\Objects\Debug\LvglWindowsSimulator\x64\\" /Fd"d:\LICENTA\TabletClient\lv_port_pc_visual_studio\Output\Objects\Debug\LvglWindowsSimulator\x64\vc145.pdb" /external:W3 /Gd /TP /wd4703 /FC /errorReport:queue /utf-8 LvglWindowsSimulator.cpp
+  LvglWindowsSimulator.cpp
+d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.cpp(664,22): error C2440: 'initializing': cannot convert from 'void *' to 'lv_obj_t *' [d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj]
+      d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.cpp(664,22):
+      Conversion from 'void*' to pointer to non-'void' requires an explicit cast
+  
+Done Building Project "d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj" (default targets) -- FAILED.
+
+Build FAILED.
+
+"d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj" (default target) (1) ->
+(WarnCompileDuplicatedFilename target) -> 
+  C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VC\v180\Microsoft.CppBuild.targets(1142,5): warning MSB8027: Two or more files with the name of vg_lite_matrix.c will produce outputs to the same location. This can lead to an incorrect build result.  The files involved are d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\..\LvglPlatform\lvgl\src\debugging\vg_lite_tvg\vg_lite_matrix.c, d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\..\LvglPlatform\lvgl\src\libs\vg_lite_driver\VGLite\vg_lite_matrix.c. [d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj]
+
+
+"d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj" (default target) (1) ->
+(ClCompile target) -> 
+  d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.cpp(664,22): error C2440: 'initializing': cannot convert from 'void *' to 'lv_obj_t *' [d:\LICENTA\TabletClient\lv_port_pc_visual_studio\LvglWindowsSimulator\LvglWindowsSimulator.vcxproj]
+
+    1 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:03.86
